@@ -1,0 +1,95 @@
+.difference-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.compare-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 28px 24px 22px;
+  transition: border-color 0.2s var(--ease), transform 0.2s var(--ease);
+}
+
+.compare-card:hover {
+  transform: translateY(-2px);
+}
+
+.compare-card--new {
+  background: rgba(255, 255, 255, 0.72);
+  border-color: var(--accent-border);
+}
+
+.compare-label {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  margin-bottom: 24px;
+}
+
+.compare-label.is-accent {
+  color: var(--accent);
+}
+
+.compare-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.compare-steps li {
+  align-items: center;
+  color: var(--text);
+  display: flex;
+  font-size: 14px;
+  font-weight: 400;
+  gap: 12px;
+  letter-spacing: -0.01em;
+}
+
+.compare-num {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text-muted);
+  display: inline-flex;
+  flex: 0 0 30px;
+  font-size: 11px;
+  font-weight: 500;
+  height: 30px;
+  justify-content: center;
+}
+
+.compare-foot {
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 400;
+  padding-top: 16px;
+}
+
+.compare-foot.is-accent {
+  align-items: center;
+  color: var(--accent);
+  display: flex;
+  font-size: 12px;
+  gap: 7px;
+}
+
+.compare-foot-icon {
+  font-size: 13px;
+}
+
+.compare-card--new .panel-demo--compare {
+  margin-bottom: 22px;
+}
+
+@media (max-width: 768px) {
+  .difference-grid {
+    grid-template-columns: 1fr;
+  }
+}

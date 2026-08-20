@@ -1,0 +1,38 @@
+.pricing-includes {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  margin: 0 auto;
+  max-width: 680px;
+  padding: 26px 24px;
+}
+
+.pricing-includes h3 {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin-bottom: 16px;
+}
+
+.pricing-includes ul {
+  display: grid;
+  gap: 10px;
+}
+
+.pricing-includes li {
+  align-items: center;
+  color: var(--text-body);
+  display: flex;
+  font-size: 14px;
+  font-weight: 400;
+  gap: 10px;
+  line-height: 1.45;
+}
+
+.pricing-check {
+  align-items: center;
+  color: var(--accent);
+  display: inline-flex;
+  flex: 0 0 16px;
+}

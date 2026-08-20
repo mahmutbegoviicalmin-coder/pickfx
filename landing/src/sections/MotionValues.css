@@ -1,0 +1,83 @@
+.motion-values {
+  background: var(--bg);
+}
+
+.motion-values-inner {
+  align-items: center;
+  display: grid;
+  gap: 48px;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+}
+
+.motion-values-title {
+  color: var(--text);
+  font-size: clamp(1.75rem, 3vw, 2.5rem);
+  font-weight: 600;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
+  margin-bottom: 18px;
+  max-width: 18ch;
+}
+
+.motion-values-subtitle {
+  color: var(--text-body);
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.6;
+  max-width: 38ch;
+}
+
+.motion-values-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0 auto;
+  max-width: 340px;
+  width: 100%;
+}
+
+.motion-values-item {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  justify-content: space-between;
+  padding: 14px 16px;
+  transition: border-color 0.2s var(--ease), transform 0.2s var(--ease);
+}
+
+.motion-values-item:hover {
+  border-color: rgba(0, 0, 0, 0.12);
+  transform: translateX(2px);
+}
+
+.motion-values-label {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.motion-values-value {
+  color: var(--accent);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .motion-values-inner {
+    gap: 32px;
+    grid-template-columns: 1fr;
+  }
+
+  .motion-values-title {
+    max-width: none;
+  }
+
+  .motion-values-list {
+    max-width: 100%;
+  }
+}

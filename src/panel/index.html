@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>PickFX</title>
+	<link rel="stylesheet" href="styles/panel.css?v=premium-search-20260820">
+</head>
+<body>
+	<div class="command-bar is-centered">
+		<div class="bar-header">
+			<div class="header-brand">
+				<img class="app-mark-img brand-logo" src="assets/pickfx-logo-light.png" alt="" width="28" height="28">
+				<span class="brand-name">PickFX</span>
+			</div>
+			<button id="settings-btn" class="icon-btn" type="button" title="Settings" aria-label="Settings"></button>
+		</div>
+
+		<div class="search-stage">
+			<div class="search-wrap">
+				<span id="search-icon" class="search-icon" aria-hidden="true"></span>
+				<input id="search-input" type="text" placeholder="Search effects or commands" autocomplete="off" spellcheck="false" autofocus>
+				<button id="clear-search-btn" class="kbd-chip" type="button" title="Clear">esc</button>
+			</div>
+
+			<div id="search-results" class="results"></div>
+		</div>
+
+		<div class="bar-footer">
+			<div class="footer-status">
+				<p id="apply-status"></p>
+			</div>
+			<div class="footer-hint">
+				<span class="footer-brand-meta">
+					<img class="footer-brand-logo" src="assets/pickfx-logo-light.png" alt="" width="14" height="14">
+					<span class="footer-brand-name">PickFX</span>
+					<span class="footer-sep">·</span>
+					<span id="footer-result-count" class="footer-count"></span>
+				</span>
+				<span class="footer-apply-hint">Apply <span class="keycap">↵</span></span>
+			</div>
+			<p id="index-status" class="effect-count vis-hidden" hidden aria-hidden="true"></p>
+		</div>
+	</div>
+
+	<div id="debug-panel" class="debug-panel" hidden>
+		<div class="debug-actions">
+			<button id="apply-btn" type="button">Apply Selected Effect</button>
+			<button id="refresh-btn" type="button">Refresh Effects</button>
+			<button id="ping-btn" type="button">Ping Premiere</button>
+			<button id="selection-btn" type="button">Get Selection</button>
+			<button id="discover-btn" type="button">Discover Premiere Effects</button>
+			<button id="inspect-effects-btn" type="button">Inspect Selected Effects</button>
+			<button id="inspect-clip-params-btn" type="button">Inspect clip parameters</button>
+			<button id="inspect-motion-scale-btn" type="button">Inspect Motion Scale</button>
+			<button id="test-scale-semantics-btn" type="button">Test Scale Semantics</button>
+			<button id="universal-inspect-btn" type="button">Universal inspect</button>
+			<button id="scan-numeric-candidates-btn" type="button">Scan Numeric Candidates</button>
+			<button id="inspect-color-params-btn" type="button">Inspect Color Parameters</button>
+			<button id="inspect-audio-params-btn" type="button">Inspect Audio Parameters</button>
+			<button id="inspect-enum-params-btn" type="button">Inspect Enum Parameters</button>
+			<button id="diagnose-blend-mode-btn" type="button">Diagnose Blend Mode</button>
+			<button id="inspect-saturation-matches-btn" type="button">Inspect Saturation Matches</button>
+			<button id="inspect-lumetri-identity-btn" type="button" title="DEBUG only. Read-only dump of every Lumetri Color instance on the selected clip. Does not write, does not use QE, does not choose first/last/index.">Inspect Lumetri Instance Identity</button>
+			<button id="find-opacity-btn" type="button">Find Opacity</button>
+			<button id="find-typed-btn" type="button">Find typed candidates</button>
+		</div>
+		<div class="debug-inspect">
+			<p class="debug-inspect-title">DEBUG</p>
+			<label class="debug-inspect-field">
+				<span>Effect / Component</span>
+				<input id="inspect-effect-input" type="text" spellcheck="false" placeholder="Lumetri Color" value="">
+			</label>
+			<label class="debug-inspect-field">
+				<span>Component MatchName</span>
+				<input id="inspect-component-match-input" type="text" spellcheck="false" placeholder="AE.ADBE Lumetri" value="">
+			</label>
+			<label class="debug-inspect-field">
+				<span>Parameter</span>
+				<input id="inspect-parameter-input" type="text" spellcheck="false" placeholder="Temperature" value="">
+			</label>
+			<label class="debug-inspect-field">
+				<span>Parameter MatchName</span>
+				<input id="inspect-parameter-match-input" type="text" spellcheck="false" placeholder="(empty is valid)" value="">
+			</label>
+			<div class="debug-inspect-actions">
+				<button id="inspect-param-btn" type="button">Inspect</button>
+				<button id="inspect-all-params-btn" type="button">Inspect all parameters</button>
+				<button id="inspect-boolean-candidate-btn" type="button">Inspect boolean candidate</button>
+				<button id="test-boolean-write-btn" type="button">Test Boolean Write</button>
+				<button id="test-motion-write-btn" type="button">Test Motion Write</button>
+				<button id="test-parameter-write-btn" type="button">Test Parameter Write</button>
+				<button id="test-numeric-parameter-write-btn" type="button">Test Numeric Parameter Write</button>
+				<button id="test-color-parameter-write-btn" type="button" data-pickfx-button="color-parameter-write-test" data-pickfx-handler="invokeColorParameterWriteTest" data-wiring-version="color-write-20260819" title="Typed Parameter tests that one identity. Empty Parameter tests every unambiguous Lumetri numeric candidate. Ambiguous names such as Saturation are rejected." onclick="window.__pickfxColorWriteButtonClicked=true; if (window.__pickfxInvokeColorParameterWriteTest) { window.__pickfxInvokeColorParameterWriteTest(event); } return false;">Test Color Parameter Write</button>
+				<button id="test-audio-parameter-write-btn" type="button" data-pickfx-button="audio-parameter-write-test" data-pickfx-handler="invokeAudioParameterWriteTest" title="Typed Parameter tests that one identity. Empty Parameter tests every unambiguous numeric Audio candidate. Identities come from Inspect Audio Parameters. No production promotion." onclick="window.__pickfxAudioWriteButtonClicked=true; if (window.__pickfxInvokeAudioParameterWriteTest) { window.__pickfxInvokeAudioParameterWriteTest(event); } return false;">Test Audio Parameter Write</button>
+				<button id="test-enum-parameter-write-btn" type="button" data-pickfx-button="enum-parameter-write-test" data-pickfx-handler="invokeEnumParameterWriteTest" title="DEBUG only. Typed Parameter tests that one enum identity. Empty Parameter tests unambiguous enum candidates plus unique Blend Mode. Never falls back to numeric ParameterWriteTest. No production promotion." onclick="window.__pickfxEnumWriteButtonClicked=true; if (window.__pickfxInvokeEnumParameterWriteTest) { window.__pickfxInvokeEnumParameterWriteTest(event); } return false;">Test Enum Parameter Write</button>
+				<button id="diagnose-audio-level-setvalue-btn" type="button" data-pickfx-button="audio-level-setvalue-diagnose" data-pickfx-handler="invokeAudioLevelSetValueDiagnose" title="DEBUG only. Same Audio Level write-test path. Captures setValue throw/return/read-back, then restores. Does not use QE or setValueAtKey. Does not promote Level." onclick="window.__pickfxAudioLevelDiagnoseButtonClicked=true; if (window.__pickfxInvokeAudioLevelSetValueDiagnose) { window.__pickfxInvokeAudioLevelSetValueDiagnose(event); } return false;">Diagnose Audio Level setValue</button>
+				<button id="probe-audio-level-capability-btn" type="button" data-pickfx-button="audio-level-capability-probe" data-pickfx-handler="invokeAudioLevelCapabilityProbe" title="DEBUG only. Tests setValueAtKey, addKey+setValueAtKey, and setTimeVarying one at a time on unique Audio Level, then restores. Does not promote. Does not use QE." onclick="window.__pickfxAudioLevelCapabilityButtonClicked=true; if (window.__pickfxInvokeAudioLevelCapabilityProbe) { window.__pickfxInvokeAudioLevelCapabilityProbe(event); } return false;">Probe Audio Level Capability</button>
+				<button id="copy-inspect-json-btn" type="button">Copy JSON</button>
+			</div>
+		</div>
+		<pre id="result">Debug JSON</pre>
+	</div>
+
+	<script src="lib/CSInterface.js"></script>
+	<script src="../core/EffectRegistry.js"></script>
+	<script src="../core/EffectSearch.js"></script>
+	<script src="../core/EffectExecutor.js"></script>
+	<script src="../core/CommandParser.js"></script>
+	<script src="../core/LumetriPicker.js?v=lumetri-param-picker-20260819"></script>
+	<script src="../core/ConfirmedParameterWrites.js?v=lumetri-param-picker-20260819"></script>
+	<script src="../core/CommandPreview.js?v=mvp-ui-20260820a"></script>
+	<script src="../core/NumericParameterPicker.js"></script>
+	<script src="../core/ParameterValueParser.js"></script>
+	<script src="../core/ParameterValueResolver.js"></script>
+	<script src="../core/ParameterEngine.js"></script>
+	<script src="../core/PointValue.js"></script>
+	<script src="../core/ParameterValueType.js"></script>
+	<script src="../core/SpeedOperation.js"></script>
+	<script src="../core/TypedCandidateClassifier.js"></script>
+	<script src="../core/BooleanCandidateInspect.js"></script>
+	<script src="../core/BooleanWriteTest.js"></script>
+	<script src="../core/MotionWriteTest.js"></script>
+	<script src="../core/BatchNumericExecutor.js?v=lumetri-picker-20260819"></script>
+	<script src="../core/CommandExecutor.js?v=lumetri-picker-20260819"></script>
+	<script src="../core/ParameterDiscovery.js"></script>
+	<script src="../core/ColorWriteTestWiring.js?v=color-all-groups-20260819"></script>
+	<script src="../core/AudioWriteTestWiring.js?v=audio-capability-20260819"></script>
+	<script src="../core/EnumWriteTestWiring.js?v=enum-load-20260819"></script>
+	<script src="../premiere/PremiereBridge.js?v=lumetri-picker-20260819"></script>
+	<script src="ui/EffectIconResolver.js?v=premium-ui-20260820"></script>
+	<script src="ui/EffectIcons.js?v=neutral-ui-20260820"></script>
+	<script src="ui/CommandPaletteState.js?v=mvp-ui-20260820a"></script>
+	<script src="ui/RecentStore.js"></script>
+	<script src="ui/FavoritesStore.js"></script>
+	<script src="js/panel.js?v=fix-success-fn-20260820"></script>
+</body>
+</html>

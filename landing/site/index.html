@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Find and apply Premiere Pro effects and parameters in seconds with PickFX, a focused keyboard-first command palette for editors.">
+  <title>PickFX for Premiere Pro | Find. Apply. Keep Editing.</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="navbar" id="top">
+    <div class="container navbar-inner">
+      <a href="#top" class="navbar-brand" aria-label="PickFX home">
+        <span class="logo">
+          <span class="logo-mark"><img src="assets/pickfx-logo-dark.png?v=4" alt="" width="52" height="52"></span>
+          <span class="logo-word">PickFX</span>
+        </span>
+      </a>
+      <nav class="navbar-links" aria-label="Primary">
+        <a href="#features" class="navbar-link">Features</a>
+        <a href="#how-it-works" class="navbar-link">How It Works</a>
+        <a href="#pricing" class="navbar-link">Pricing</a>
+        <a href="#faq" class="navbar-link">FAQ</a>
+      </nav>
+      <div class="navbar-actions">
+        <a href="#pricing" class="btn btn--dark btn--sm">Get PickFX</a>
+        <button type="button" class="navbar-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-menu"><span></span><span></span></button>
+      </div>
+    </div>
+    <div class="mobile-menu" id="mobile-menu">
+      <nav aria-label="Mobile">
+        <a href="#features" class="mobile-menu-link">Features</a>
+        <a href="#how-it-works" class="mobile-menu-link">How It Works</a>
+        <a href="#pricing" class="mobile-menu-link">Pricing</a>
+        <a href="#faq" class="mobile-menu-link">FAQ</a>
+        <a href="#pricing" class="btn btn--dark btn--md mobile-menu-cta">Get PickFX</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero section" id="hero">
+      <div class="container hero-inner reveal is-visible">
+        <div class="hero-copy">
+          <p class="hero-eyebrow"><img class="hero-pr-logo" src="assets/pr-logo.webp" alt="" width="18" height="18" aria-hidden="true">Built for Adobe Premiere Pro</p>
+          <h1 class="hero-title">
+            <span class="hero-title-primary">Find any effect.</span>
+            <span class="hero-title-secondary">Apply it instantly.</span>
+          </h1>
+          <p class="hero-subtitle">PickFX gives you a faster way to find and apply Premiere Pro effects and parameters, right from your keyboard.</p>
+          <div class="hero-actions">
+            <a href="#pricing" class="btn btn--dark btn--lg">Get PickFX →</a>
+            <a href="#how-it-works" class="btn btn--ghost btn--lg">See how it works</a>
+          </div>
+          <p class="hero-pricing">$9.99/month · $59.90 one-time</p>
+        </div>
+        <div class="hero-visual">
+          <div class="hero-premiere" aria-hidden="true">
+            <div class="premiere-toolbar"></div>
+            <div class="premiere-body">
+              <div class="premiere-panel"></div>
+              <div class="premiere-timeline">
+                <div class="premiere-track"></div>
+                <div class="premiere-track is-active"></div>
+                <div class="premiere-track"></div>
+              </div>
+            </div>
+          </div>
+          <div class="panel-demo" id="hero-palette" aria-label="PickFX panel preview">
+            <div class="panel-demo-header">
+              <div class="panel-demo-brand">
+                <img src="assets/pickfx-logo-light.png" alt="" width="28" height="28">
+                <span>PickFX</span>
+              </div>
+              <span class="panel-demo-menu" aria-hidden="true"></span>
+            </div>
+            <div class="panel-demo-search">
+              <span class="panel-demo-search-icon" aria-hidden="true"></span>
+              <span class="panel-demo-query" data-typed></span>
+              <span class="panel-demo-esc">esc</span>
+            </div>
+            <div class="panel-demo-results">
+              <div class="panel-demo-row" data-result hidden>
+                <span class="panel-demo-icon-well"><span class="panel-demo-effect-icon" data-icon></span></span>
+                <div class="panel-demo-result-body">
+                  <span class="panel-demo-effect-name" data-result-name></span>
+                  <span class="panel-demo-result-sub" data-result-sub hidden></span>
+                </div>
+                <span class="panel-demo-action" data-action hidden></span>
+              </div>
+              <div class="panel-demo-row is-muted" data-muted hidden>
+                <span class="panel-demo-icon-well"><span class="panel-demo-effect-icon" data-muted-icon></span></span>
+                <div class="panel-demo-result-body"><span class="panel-demo-effect-name" data-muted-name></span><span class="panel-demo-result-sub">Recent</span></div>
+              </div>
+              <div class="panel-demo-row is-muted" data-muted hidden>
+                <span class="panel-demo-icon-well"><span class="panel-demo-effect-icon" data-muted-icon></span></span>
+                <div class="panel-demo-result-body"><span class="panel-demo-effect-name" data-muted-name></span><span class="panel-demo-result-sub">Recent</span></div>
+              </div>
+              <div class="panel-demo-row is-muted" data-muted hidden>
+                <span class="panel-demo-icon-well"><span class="panel-demo-effect-icon" data-muted-icon></span></span>
+                <div class="panel-demo-result-body"><span class="panel-demo-effect-name" data-muted-name></span><span class="panel-demo-result-sub">Recent</span></div>
+              </div>
+              <div class="panel-demo-row is-muted" data-muted hidden>
+                <span class="panel-demo-icon-well"><span class="panel-demo-effect-icon" data-muted-icon></span></span>
+                <div class="panel-demo-result-body"><span class="panel-demo-effect-name" data-muted-name></span><span class="panel-demo-result-sub">Recent</span></div>
+              </div>
+            </div>
+            <div class="panel-demo-footer">
+              <span class="panel-demo-footer-brand">
+                <img src="assets/pickfx-logo-light.png" alt="" width="14" height="14">
+                <span>PickFX</span>
+                <span class="panel-demo-sep">·</span>
+                <span class="panel-demo-count" data-count>0 effects</span>
+              </span>
+              <span class="panel-demo-footer-action">Apply <span class="panel-demo-key">↵</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section difference" id="difference">
+      <div class="container reveal">
+        <div class="section-heading">
+          <p class="section-eyebrow">THE PROBLEM</p>
+          <h2 class="section-title"><span class="section-title-line">You already know the effect.</span><span class="section-title-line">Why are you still looking for it?</span></h2>
+        </div>
+        <div class="difference-grid">
+          <article class="compare-card compare-card--old">
+            <p class="compare-label">THE OLD WAY</p>
+            <ol class="compare-steps">
+              <li><span class="compare-num">01</span><span>Open Effects</span></li>
+              <li><span class="compare-num">02</span><span>Search</span></li>
+              <li><span class="compare-num">03</span><span>Find</span></li>
+              <li><span class="compare-num">04</span><span>Drag</span></li>
+              <li><span class="compare-num">05</span><span>Repeat</span></li>
+            </ol>
+            <p class="compare-foot">Five steps. Every clip. Every time.</p>
+          </article>
+          <article class="compare-card compare-card--new">
+            <p class="compare-label is-accent">PICKFX</p>
+            <div class="panel-demo panel-demo--compare" aria-label="PickFX panel">
+              <div class="panel-demo-header">
+                <div class="panel-demo-brand">
+                  <img src="assets/pickfx-logo-light.png" alt="" width="24" height="24">
+                  <span>PickFX</span>
+                </div>
+                <span class="panel-demo-menu" aria-hidden="true"></span>
+              </div>
+              <div class="panel-demo-search">
+                <span class="panel-demo-search-icon" aria-hidden="true"></span>
+                <span class="panel-demo-query">Gaussian Blur 30</span>
+                <span class="panel-demo-esc">esc</span>
+              </div>
+              <div class="panel-demo-results">
+                <div class="panel-demo-row is-success">
+                  <span class="panel-demo-icon-well"><span class="panel-demo-effect-icon" data-static-icon="check"></span></span>
+                  <div class="panel-demo-result-body">
+                    <span class="panel-demo-effect-name">Gaussian Blur 30</span>
+                    <span class="panel-demo-result-sub">Applied successfully</span>
+                  </div>
+                </div>
+              </div>
+              <div class="panel-demo-footer">
+                <span class="panel-demo-footer-brand">
+                  <img src="assets/pickfx-logo-light.png" alt="" width="12" height="12">
+                  <span>PickFX</span>
+                  <span class="panel-demo-sep">·</span>
+                  <span class="panel-demo-count">1 effect</span>
+                </span>
+                <span class="panel-demo-footer-action">Apply <span class="panel-demo-key">↵</span></span>
+              </div>
+            </div>
+            <p class="compare-foot is-accent"><span class="compare-foot-icon">⚡</span>Search. Select. Apply.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section motion-values" id="motion-values">
+      <div class="container motion-values-inner reveal">
+        <div class="motion-values-copy">
+          <h2 class="motion-values-title">Change values across clips without touching the Effect Controls panel.</h2>
+          <h3 class="motion-values-subtitle">Control position, scale, rotation, anchor point, and opacity with direct value entry so repetitive animation tweaks take seconds instead of minutes.</h3>
+        </div>
+        <div class="motion-values-list" aria-hidden="true">
+          <div class="motion-values-item"><span class="motion-values-label">Position</span><span class="motion-values-value">960 540</span></div>
+          <div class="motion-values-item"><span class="motion-values-label">Scale</span><span class="motion-values-value">120</span></div>
+          <div class="motion-values-item"><span class="motion-values-label">Rotation</span><span class="motion-values-value">15</span></div>
+          <div class="motion-values-item"><span class="motion-values-label">Anchor Point</span><span class="motion-values-value">0.5 0.5</span></div>
+          <div class="motion-values-item"><span class="motion-values-label">Opacity</span><span class="motion-values-value">80</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section showcase" id="showcase">
+      <div class="container showcase-inner reveal">
+        <div class="showcase-copy">
+          <h2 class="showcase-title"><span>It understands what you mean.</span></h2>
+          <p class="showcase-subtitle">Effects, parameters and values from one command bar.</p>
+          <div class="showcase-params" data-showcase-params>
+            <div class="showcase-param is-active" data-showcase-param="0"><span class="showcase-param-label">Gaussian Blur</span><span class="showcase-param-value">30</span></div>
+            <div class="showcase-param" data-showcase-param="1"><span class="showcase-param-label">Scale</span><span class="showcase-param-value">120</span></div>
+            <div class="showcase-param" data-showcase-param="2"><span class="showcase-param-label">Opacity</span><span class="showcase-param-value">80</span></div>
+            <div class="showcase-param" data-showcase-param="3"><span class="showcase-param-label">Temperature</span><span class="showcase-param-value">20</span></div>
+            <div class="showcase-param" data-showcase-param="4"><span class="showcase-param-label">Saturation</span><span class="showcase-param-value">40</span></div>
+          </div>
+        </div>
+        <div class="showcase-visual">
+          <div class="panel-demo panel-demo--showcase" id="showcase-panel" aria-label="PickFX panel">
+            <div class="panel-demo-header">
+              <div class="panel-demo-brand">
+                <img src="assets/pickfx-logo-light.png" alt="" width="24" height="24">
+                <span>PickFX</span>
+              </div>
+              <span class="panel-demo-menu" aria-hidden="true"></span>
+            </div>
+            <div class="panel-demo-search">
+              <span class="panel-demo-search-icon" aria-hidden="true"></span>
+              <span class="panel-demo-query" data-typed></span>
+              <span class="panel-demo-esc">esc</span>
+            </div>
+            <div class="panel-demo-results">
+              <div class="panel-demo-row" data-result hidden>
+                <span class="panel-demo-icon-well"><span class="panel-demo-effect-icon" data-icon></span></span>
+                <div class="panel-demo-result-body">
+                  <span class="panel-demo-effect-name" data-result-name></span>
+                  <span class="panel-demo-result-sub" data-result-sub hidden></span>
+                </div>
+                <span class="panel-demo-action" data-action hidden></span>
+              </div>
+              <div class="panel-demo-row is-muted" data-muted hidden>
+                <span class="panel-demo-icon-well"><span class="panel-demo-effect-icon" data-muted-icon></span></span>
+                <div class="panel-demo-result-body"><span class="panel-demo-effect-name" data-muted-name></span><span class="panel-demo-result-sub">Recent</span></div>
+              </div>
+              <div class="panel-demo-row is-muted" data-muted hidden>
+                <span class="panel-demo-icon-well"><span class="panel-demo-effect-icon" data-muted-icon></span></span>
+                <div class="panel-demo-result-body"><span class="panel-demo-effect-name" data-muted-name></span><span class="panel-demo-result-sub">Recent</span></div>
+              </div>
+              <div class="panel-demo-row is-muted" data-muted hidden>
+                <span class="panel-demo-icon-well"><span class="panel-demo-effect-icon" data-muted-icon></span></span>
+                <div class="panel-demo-result-body"><span class="panel-demo-effect-name" data-muted-name></span><span class="panel-demo-result-sub">Recent</span></div>
+              </div>
+              <div class="panel-demo-row is-muted" data-muted hidden>
+                <span class="panel-demo-icon-well"><span class="panel-demo-effect-icon" data-muted-icon></span></span>
+                <div class="panel-demo-result-body"><span class="panel-demo-effect-name" data-muted-name></span><span class="panel-demo-result-sub">Recent</span></div>
+              </div>
+            </div>
+            <div class="panel-demo-footer">
+              <span class="panel-demo-footer-brand">
+                <img src="assets/pickfx-logo-light.png" alt="" width="12" height="12">
+                <span>PickFX</span>
+                <span class="panel-demo-sep">·</span>
+                <span class="panel-demo-count" data-count>0 effects</span>
+              </span>
+              <span class="panel-demo-footer-action">Apply <span class="panel-demo-key">↵</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section features" id="features">
+      <div class="container reveal">
+        <div class="section-heading">
+          <p class="section-eyebrow">WHAT PICKFX DOES</p>
+          <h2 class="section-title"><span class="section-title-line">More than effect search.</span></h2>
+        </div>
+        <div class="features-grid features-grid--four">
+          <article class="feature-card"><div class="feature-card-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><circle cx="7.75" cy="7.75" r="4.75" stroke="currentColor" stroke-width="1.35"/><path d="M11.5 11.5L15.25 15.25" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/></svg></div><h3 class="feature-card-title">Instant Effect Search</h3><p class="feature-card-copy">Find the effect you need without navigating through the Effects panel.</p></article>
+          <article class="feature-card"><div class="feature-card-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M3.3 8h11.4M6.15 5.55v4.9M10.4 6.35v3.3" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/></svg></div><h3 class="feature-card-title">Command-Based Controls</h3><p class="feature-card-copy">Type commands such as Gaussian Blur 30, Scale 120 or Opacity 80.</p></article>
+          <article class="feature-card"><div class="feature-card-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="2" y="5" width="14" height="9" rx="2" stroke="currentColor" stroke-width="1.35"/><path d="M5 8.5h8M5 11h5" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/></svg></div><h3 class="feature-card-title">Keyboard First</h3><p class="feature-card-copy">Open, search and apply without leaving your timeline.</p></article>
+          <article class="feature-card"><div class="feature-card-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><rect x="2.5" y="4" width="13" height="10" rx="2" stroke="currentColor" stroke-width="1.35"/><path d="M6 4v10M12 4v10M2.5 7.5h13M2.5 10.5h13" stroke="currentColor" stroke-width="1.35"/></svg></div><h3 class="feature-card-title">Built for Premiere Pro</h3><p class="feature-card-copy">Designed around the way Premiere Pro editors already work.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section how-it-works" id="how-it-works">
+      <div class="container reveal">
+        <div class="section-heading">
+          <p class="section-eyebrow">HOW IT WORKS</p>
+          <h2 class="section-title"><span class="section-title-line">Three steps. That's it.</span></h2>
+        </div>
+        <div class="steps-grid">
+          <article class="step-card"><div class="step-card-top"><span class="step-num">01</span><span class="step-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M4 3.5l10 5.5-4.5 1.5L8 14.5 4 3.5Z" stroke="currentColor" stroke-width="1.35" stroke-linejoin="round"/></svg></span></div><h3>Select</h3><p>Select a clip.</p></article>
+          <article class="step-card"><div class="step-card-top"><span class="step-num">02</span><span class="step-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M6 5.5a2 2 0 1 0 0 4M12 5.5a2 2 0 1 0 0 4M5.5 12h7" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/></svg></span></div><h3>Search</h3><p>Type the effect or parameter you need.</p></article>
+          <article class="step-card"><div class="step-card-top"><span class="step-num">03</span><span class="step-icon"><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M4 6.5h7a3 3 0 0 1 0 6H9" stroke="currentColor" stroke-width="1.35" stroke-linecap="round"/><path d="M6.5 8.5 4 6.5l2.5-2" stroke="currentColor" stroke-width="1.35" stroke-linecap="round" stroke-linejoin="round"/></svg></span></div><h3>Apply</h3><p>Press Enter. Keep editing.</p></article>
+        </div>
+        <div class="workflow-demo">
+          <div class="workflow-clip">
+            <p class="workflow-label">Clip: Interview_02</p>
+            <div class="workflow-clip-frame"><span class="workflow-time">00:00:12:04</span></div>
+            <p class="workflow-caption">Selected clip receives the effect.</p>
+          </div>
+          <div class="panel-demo panel-demo--showcase" aria-label="PickFX panel">
+            <div class="panel-demo-header">
+              <div class="panel-demo-brand">
+                <img src="assets/pickfx-logo-light.png" alt="" width="24" height="24">
+                <span>PickFX</span>
+              </div>
+              <span class="panel-demo-menu" aria-hidden="true"></span>
+            </div>
+            <div class="panel-demo-search">
+              <span class="panel-demo-search-icon" aria-hidden="true"></span>
+              <span class="panel-demo-query">Gaussian Blur 30</span>
+              <span class="panel-demo-esc">esc</span>
+            </div>
+            <div class="panel-demo-results">
+              <div class="panel-demo-row is-selected">
+                <span class="panel-demo-icon-well"><span class="panel-demo-effect-icon" data-static-icon="blur"></span></span>
+                <div class="panel-demo-result-body">
+                  <span class="panel-demo-effect-name">Gaussian Blur 30</span>
+                </div>
+                <span class="panel-demo-action">Apply <span class="keycap">↵</span></span>
+              </div>
+              <div class="panel-demo-row is-muted">
+                <span class="panel-demo-icon-well"><span class="panel-demo-effect-icon" data-static-icon="scale"></span></span>
+                <div class="panel-demo-result-body"><span class="panel-demo-effect-name">Scale 120</span><span class="panel-demo-result-sub">Recent</span></div>
+              </div>
+              <div class="panel-demo-row is-muted">
+                <span class="panel-demo-icon-well"><span class="panel-demo-effect-icon" data-static-icon="opacity"></span></span>
+                <div class="panel-demo-result-body"><span class="panel-demo-effect-name">Opacity 80</span><span class="panel-demo-result-sub">Recent</span></div>
+              </div>
+            </div>
+            <div class="panel-demo-footer">
+              <span class="panel-demo-footer-brand">
+                <img src="assets/pickfx-logo-light.png" alt="" width="12" height="12">
+                <span>PickFX</span>
+                <span class="panel-demo-sep">·</span>
+                <span class="panel-demo-count">1 effect</span>
+              </span>
+              <span class="panel-demo-footer-action">Apply <span class="panel-demo-key">↵</span></span>
+            </div>
+          </div>
+          <div class="workflow-applied">
+            <p class="workflow-label">EFFECT APPLIED</p>
+            <div class="workflow-applied-row"><span class="workflow-check"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3.5 8.2l2.8 2.8 6.2-6.3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span><div><strong>Gaussian Blur 30</strong><p>Added to selected clip</p></div></div>
+            <div class="workflow-params"><span>Blur 30</span><span>Opacity 80</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section pricing" id="pricing">
+      <div class="container reveal">
+        <div class="section-heading section-heading--center">
+          <p class="section-eyebrow">PRICING</p>
+          <h2 class="section-title"><span class="section-title-line">Simple, honest pricing.</span></h2>
+          <p class="section-subtitle">Two ways to use PickFX. No unnecessary tiers.</p>
+        </div>
+        <div class="pricing-grid">
+          <article class="pricing-card">
+            <p class="pricing-plan">MONTHLY</p>
+            <div class="pricing-price"><span class="pricing-amount">$9.99</span><span class="pricing-period">/month</span></div>
+            <p class="pricing-description">Flexible. Cancel anytime.</p>
+            <a href="#pricing" class="btn btn--outline btn--md pricing-cta">Get PickFX</a>
+          </article>
+          <article class="pricing-card is-featured">
+            <span class="pricing-badge">Best value</span>
+            <p class="pricing-plan is-accent">LIFETIME</p>
+            <div class="pricing-price"><span class="pricing-amount">$59.90</span><span class="pricing-period">one-time</span></div>
+            <p class="pricing-description">Pay once. Keep PickFX.</p>
+            <a href="#pricing" class="btn btn--dark btn--md pricing-cta">Get Lifetime →</a>
+          </article>
+        </div>
+        <article class="pricing-includes">
+          <h3>Every PickFX license includes:</h3>
+          <ul>
+            <li><span class="pricing-check"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3.5 8.2l2.8 2.8 6.2-6.3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>PickFX Premiere Pro plugin</li>
+            <li><span class="pricing-check"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3.5 8.2l2.8 2.8 6.2-6.3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Effect search and application</li>
+            <li><span class="pricing-check"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3.5 8.2l2.8 2.8 6.2-6.3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Keyboard-first workflow</li>
+            <li><span class="pricing-check"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3.5 8.2l2.8 2.8 6.2-6.3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Future improvements</li>
+            <li><span class="pricing-check"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3.5 8.2l2.8 2.8 6.2-6.3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Simple, focused interface</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section class="section faq-section" id="faq">
+      <div class="container faq-inner reveal">
+        <div class="section-heading">
+          <p class="section-eyebrow">FAQ</p>
+          <h2 class="section-title"><span class="section-title-line">Questions, answered.</span></h2>
+        </div>
+        <div class="faq-list">
+          <div class="faq-item is-open"><button type="button" class="faq-trigger" aria-expanded="true"><span>What is PickFX?</span><span class="faq-icon">−</span></button><div class="faq-panel"><p>PickFX is a Premiere Pro plugin that lets you search for effects and parameters, then apply them to the selected clip from a keyboard-first command palette.</p></div></div>
+          <div class="faq-item"><button type="button" class="faq-trigger" aria-expanded="false"><span>Does PickFX work with Adobe Premiere Pro?</span><span class="faq-icon">+</span></button><div class="faq-panel" hidden><p>Yes. PickFX is built specifically for Adobe Premiere Pro.</p></div></div>
+          <div class="faq-item"><button type="button" class="faq-trigger" aria-expanded="false"><span>Does PickFX use AI?</span><span class="faq-icon">+</span></button><div class="faq-panel" hidden><p>No. PickFX is not an AI product. It is a focused utility for finding and applying effects and parameters you already know.</p></div></div>
+          <div class="faq-item"><button type="button" class="faq-trigger" aria-expanded="false"><span>Can I use PickFX with keyboard shortcuts?</span><span class="faq-icon">+</span></button><div class="faq-panel" hidden><p>Yes. PickFX is designed to be keyboard-first. Open it, search, and apply without leaving your timeline.</p></div></div>
+          <div class="faq-item"><button type="button" class="faq-trigger" aria-expanded="false"><span>Does PickFX work with the effects already available in Premiere Pro?</span><span class="faq-icon">+</span></button><div class="faq-panel" hidden><p>Yes. PickFX works with the effects and parameters already available in your Premiere Pro workflow.</p></div></div>
+          <div class="faq-item"><button type="button" class="faq-trigger" aria-expanded="false"><span>Does PickFX change my Premiere Pro project?</span><span class="faq-icon">+</span></button><div class="faq-panel" hidden><p>PickFX applies effects and parameter values to the clip you select. It does not restructure your project or replace Premiere Pro.</p></div></div>
+          <div class="faq-item"><button type="button" class="faq-trigger" aria-expanded="false"><span>What are the pricing options?</span><span class="faq-icon">+</span></button><div class="faq-panel" hidden><p>PickFX is available for $9.99/month or as a $59.90 one-time lifetime license.</p></div></div>
+          <div class="faq-item"><button type="button" class="faq-trigger" aria-expanded="false"><span>Who is PickFX for?</span><span class="faq-icon">+</span></button><div class="faq-panel" hidden><p>PickFX is for Premiere Pro editors who already know the effect or parameter they want, and want a faster way to apply it.</p></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section final-cta">
+      <div class="container final-cta-inner reveal">
+        <h2><span>Stop looking for effects.</span><span>Just apply them.</span></h2>
+        <p>PickFX puts your effects and parameters one shortcut away.</p>
+        <a href="#pricing" class="btn btn--dark btn--lg">Get PickFX →</a>
+      </div>
+    </section>
+
+    <section class="section legal-stubs" aria-label="Legal">
+      <div class="container">
+        <div class="legal-block" id="privacy">
+          <h2>Privacy</h2>
+          <p>PickFX respects your privacy. Contact support@pickfx.app for privacy questions.</p>
+        </div>
+        <div class="legal-block" id="terms">
+          <h2>Terms</h2>
+          <p>By purchasing PickFX, you agree to use the product for your own Premiere Pro workflow. Contact support@pickfx.app for licensing questions.</p>
+        </div>
+        <div class="legal-block" id="refunds">
+          <h2>Refunds</h2>
+          <p>For refund requests, contact support@pickfx.app.</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <span class="logo"><span class="logo-mark"><img src="assets/pickfx-logo-dark.png?v=4" alt="" width="36" height="36"></span><span class="logo-word">PickFX</span></span>
+        <p class="footer-tagline">Apply effects. Without the digging.</p>
+      </div>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="#features">Features</a>
+        <a href="#how-it-works">How It Works</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#faq">FAQ</a>
+        <a href="mailto:support@pickfx.app">Support</a>
+        <a href="#privacy">Privacy</a>
+        <a href="#terms">Terms</a>
+        <a href="#refunds">Refunds</a>
+      </nav>
+      <p class="footer-copy">© 2026 PickFX</p>
+    </div>
+  </footer>
+
+  <script src="/js/main.js?v=panel-chrome-20260820d"></script>
+</body>
+</html>

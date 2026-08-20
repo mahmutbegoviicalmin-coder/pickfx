@@ -1,0 +1,125 @@
+:root {
+  --bg: #fafaf8;
+  --bg-elevated: #ffffff;
+  --bg-muted: #f5f5f3;
+  --bg-card: rgba(255, 255, 255, 0.62);
+  --text: #1d1d1f;
+  --text-headline-muted: #4a4a4e;
+  --text-body: #55585c;
+  --text-secondary: #5c5c60;
+  --text-muted: #86868b;
+  --border: #e5e5e5;
+  --border-subtle: rgba(0, 0, 0, 0.06);
+  --border-strong: rgba(0, 0, 0, 0.1);
+  --accent: #1473e6;
+  --accent-soft: rgba(20, 115, 230, 0.07);
+  --accent-border: rgba(20, 115, 230, 0.28);
+  --radius-xl: 22px;
+  --radius-lg: 18px;
+  --radius-md: 14px;
+  --radius-sm: 10px;
+  --radius-btn: 12px;
+  --radius-pill: 999px;
+  --shadow-palette: 0 28px 72px rgba(0, 0, 0, 0.07), 0 8px 24px rgba(0, 0, 0, 0.035);
+  --shadow-palette-hero: 0 40px 100px rgba(0, 0, 0, 0.14), 0 14px 36px rgba(0, 0, 0, 0.07);
+  --shadow-subtle: 0 1px 2px rgba(0, 0, 0, 0.03);
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+  --ease: cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --nav-height: 72px;
+  --container: 1080px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+  text-size-adjust: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text-body);
+  font-family: var(--font);
+  font-size: 16px;
+  font-weight: 400;
+  letter-spacing: -0.011em;
+  line-height: 1.58;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+img,
+svg {
+  display: block;
+  max-width: 100%;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+ul,
+ol {
+  list-style: none;
+}
+
+.container {
+  margin: 0 auto;
+  max-width: var(--container);
+  padding: 0 28px;
+  width: 100%;
+}
+
+.section {
+  padding: 112px 0;
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 0.65s var(--ease), transform 0.65s var(--ease);
+}
+
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+.hero .reveal {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .section {
+    padding: 72px 0;
+  }
+
+  .container {
+    padding: 0 20px;
+  }
+}

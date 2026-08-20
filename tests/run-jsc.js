@@ -1,0 +1,90 @@
+load("src/core/ParameterValueParser.js");
+load("src/core/ParameterValueResolver.js");
+load("src/core/ParameterEngine.js");
+load("src/core/PointValue.js");
+load("src/core/ParameterValueType.js");
+load("src/core/SpeedOperation.js");
+load("src/core/TypedCandidateClassifier.js");
+load("src/core/BooleanCandidateInspect.js");
+load("src/core/BooleanWriteTest.js");
+load("src/core/BatchNumericExecutor.js");
+load("src/core/NumericParameterPicker.js");
+load("src/core/EffectSearch.js");
+load("src/core/EffectRegistry.js");
+load("src/core/CommandParser.js");
+load("src/core/CommandExecutor.js");
+load("src/core/MotionParameterInspect.js");
+load("src/core/PointParameterWriter.js");
+load("src/core/ClipParameterWriter.js");
+load("src/core/MotionWriteTest.js");
+load("src/core/ConfirmedParameterWrites.js");
+load("src/core/CommandPreview.js");
+load("src/panel/ui/CommandPaletteState.js");
+load("src/core/SafeNumericTestValue.js");
+load("src/core/NumericCandidateClassifier.js");
+load("src/core/ParameterCapability.js");
+load("src/core/UniversalParameterInspect.js");
+load("src/core/UniversalParameterResolver.js");
+load("src/core/NumberParameterWriter.js");
+load("src/core/BooleanParameterWriter.js");
+load("src/core/ColorParameterWriter.js");
+load("src/core/EnumParameterWriter.js");
+load("src/core/StringParameterWriter.js");
+load("src/core/UniversalParameterWriter.js");
+load("src/core/NumericCandidateScan.js");
+load("src/core/ParameterWriteTest.js");
+load("src/core/ColorWriteTestWiring.js");
+load("src/core/ColorParameterDiscover.js");
+load("src/core/LumetriPicker.js");
+load("src/core/LumetriInstanceIdentityInspect.js");
+load("src/core/ColorParameterWriteTest.js");
+load("src/core/AudioWriteTestWiring.js");
+load("src/core/AudioParameterDiscover.js");
+load("src/core/AudioParameterWriteTest.js");
+load("src/core/AudioLevelCapabilityProbe.js");
+load("src/core/EnumWriteTestWiring.js");
+load("src/core/EnumParameterDiscover.js");
+load("src/core/EnumParameterWriteTest.js");
+load("src/core/BlendModeDiagnostic.js");
+load("src/core/MotionScaleDiscover.js");
+load("src/core/MotionScaleSemanticsTest.js");
+load("tests/smoke-restore.js");
+load("tests/parameter-engine.cases.js");
+load("tests/smoke-restore.cases.js");
+load("tests/command-routing.cases.js");
+load("tests/clip-effect-routing.cases.js");
+load("tests/brightness-contrast.cases.js");
+load("tests/command-preview.cases.js");
+load("tests/command-palette-state.cases.js");
+load("tests/typed-candidate.cases.js");
+load("tests/boolean-candidate-inspect.cases.js");
+load("tests/boolean-write-test.cases.js");
+load("tests/batch-numeric.cases.js");
+load("tests/point-value.cases.js");
+load("tests/clip-parameter.cases.js");
+load("tests/motion-write-test.cases.js");
+load("tests/universal-parameter.cases.js");
+load("tests/universal-parameter-v2.cases.js");
+load("tests/crop-parameter.cases.js");
+load("tests/motion-scale-discover.cases.js");
+load("tests/motion-scale-semantics.cases.js");
+load("tests/color-parameter.cases.js");
+load("tests/lumetri-instance-identity.cases.js");
+load("tests/lumetri-picker.cases.js");
+load("tests/lumetri-command-e2e.cases.js");
+load("tests/production-capability-matrix.cases.js");
+load("tests/audio-parameter.cases.js");
+load("tests/enum-parameter.cases.js");
+load("tests/blend-mode-diagnostic.cases.js");
+
+print("passed " + passed + "  failed " + failed);
+if (failed) {
+	if (typeof quit === "function") {
+		quit(1);
+	}
+	if (typeof process !== "undefined" && process.exit) {
+		process.exit(1);
+	}
+	throw new Error(failed + " tests failed");
+}
+

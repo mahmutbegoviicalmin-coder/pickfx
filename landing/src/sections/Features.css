@@ -1,0 +1,33 @@
+.features-grid--four {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.features-grid--four .feature-card:nth-child(2n) {
+  border-right: none;
+}
+
+.features-grid--four .feature-card:nth-child(3n) {
+  border-right: 1px solid var(--border);
+}
+
+.features-grid--four .feature-card:nth-last-child(-n + 2) {
+  border-bottom: none;
+}
+
+.features-grid--four .feature-card:nth-last-child(-n + 3) {
+  border-bottom: 1px solid var(--border);
+}
+
+@media (max-width: 640px) {
+  .features-grid--four {
+    grid-template-columns: 1fr;
+  }
+
+  .features-grid--four .feature-card {
+    border-right: none !important;
+  }
+
+  .features-grid--four .feature-card:not(:last-child) {
+    border-bottom: 1px solid var(--border) !important;
+  }
+}
