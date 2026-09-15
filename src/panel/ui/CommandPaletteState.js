@@ -38,7 +38,8 @@ var CommandPaletteState = (function () {
 		"NAME_CONFLICT",
 		"UNSUPPORTED_SCHEMA",
 		"KEYFRAMED_PARAMETER_UNSUPPORTED",
-		"TRACK_LOCKED"
+		"TRACK_LOCKED",
+		"QE_MAPPING_FAILED"
 	];
 
 	function trim(value) {
@@ -347,8 +348,19 @@ var CommandPaletteState = (function () {
 		if (reason === "TRACK_LOCKED") {
 			return {
 				title: "Track locked",
-				detail: "Unlock the track and try again.",
+				detail: payload && payload.clipName
+					? "Unlock the track for " + payload.clipName + " and try again."
+					: "Unlock the track and try again.",
 				footer: "Track locked"
+			};
+		}
+		if (reason === "QE_MAPPING_FAILED") {
+			return {
+				title: "Couldn't apply that look",
+				detail: payload && payload.clipName
+					? "PickFX couldn’t map " + payload.clipName + " for this preset."
+					: "PickFX couldn’t map a selected clip for this preset.",
+				footer: "Couldn't apply that look"
 			};
 		}
 		if (reason === "KEYFRAMES_NOT_SUPPORTED") {

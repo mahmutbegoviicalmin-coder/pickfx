@@ -1,6 +1,9 @@
 var PresetHost = (function () {
 	var PAGE_SIZE = 20;
 	var EPSILON = 0.0001;
+	var MAX_RESULT_BYTES = 30000;
+	var MAX_CLIP_FAILURES = 3;
+	var MAX_FAILURE_CHARS = 160;
 
 	function schema() {
 		if (typeof PresetSchema !== "undefined") {
@@ -44,19 +47,227 @@ var PresetHost = (function () {
 		return payload;
 	}
 
+	function clipText(value, max) {
+		var text = String(value || "");
+		if (text.length <= max) {
+			return text;
+		}
+		return text.slice(0, max);
+	}
+
+	function compactFailures(failures, limit) {
+		var out = [];
+		var i;
+		var row;
+		var max = typeof limit === "number" ? limit : MAX_CLIP_FAILURES;
+		for (i = 0; i < (failures || []).length && out.length < max; i++) {
+			row = failures[i];
+			if (!row) {
+				continue;
+			}
+			out.push({
+				reason: row.reason || "",
+				message: clipText(row.message || row.detail || "", MAX_FAILURE_CHARS),
+				displayName: row.displayName || "",
+				component: row.component || ""
+			});
+		}
+		return out;
+	}
+
+	function compactClips(clips) {
+		var failed = [];
+		var okClips = [];
+		var out = [];
+		var i;
+		var clip;
+		for (i = 0; i < (clips || []).length; i++) {
+			clip = clips[i];
+			if (!clip) {
+				continue;
+			}
+			if (clip.ok === true) {
+				okClips.push(clip);
+			} else {
+				failed.push(clip);
+			}
+		}
+		failed = failed.concat(okClips);
+		for (i = 0; i < failed.length; i++) {
+			clip = failed[i];
+			out.push({
+				name: clipText(clip.name || "", 80),
+				ok: clip.ok === true,
+				componentsApplied: clip.componentsApplied || 0,
+				parametersVerified: clip.parametersVerified || 0,
+				reason: clip.reason || "",
+				message: clipText(clip.message || "", MAX_FAILURE_CHARS),
+				failures: compactFailures(clip.failures, 2)
+			});
+		}
+		return out;
+	}
+
+	function copyKnownFields(payload, target) {
+		if (!payload || !target) {
+			return target;
+		}
+		if (payload.reason) {
+			target.reason = payload.reason;
+		}
+		if (payload.detail) {
+			target.detail = clipText(payload.detail, 240);
+		}
+		if (payload.message) {
+			target.message = clipText(payload.message, MAX_FAILURE_CHARS);
+		}
+		if (payload.presetName !== undefined) {
+			target.presetName = payload.presetName;
+		}
+		if (payload.presetId !== undefined) {
+			target.presetId = payload.presetId;
+		}
+		if (payload.selectedCount !== undefined) {
+			target.selectedCount = payload.selectedCount;
+		}
+		if (payload.successfulCount !== undefined) {
+			target.successfulCount = payload.successfulCount;
+		}
+		if (payload.failedCount !== undefined) {
+			target.failedCount = payload.failedCount;
+		}
+		if (payload.applied !== undefined) {
+			target.applied = payload.applied;
+		}
+		if (payload.clipName !== undefined) {
+			target.clipName = payload.clipName;
+		}
+		if (payload.clipIndex !== undefined) {
+			target.clipIndex = payload.clipIndex;
+		}
+		if (payload.effect !== undefined) {
+			target.effect = payload.effect;
+		}
+		if (payload.hasMore !== undefined) {
+			target.hasMore = payload.hasMore;
+		}
+		if (payload.nextOffset !== undefined) {
+			target.nextOffset = payload.nextOffset;
+		}
+		return target;
+	}
+
+	function compactResult(payload) {
+		var compact = {
+			ok: !!(payload && payload.ok === true),
+			resultTruncated: true
+		};
+		if (payload && payload.preset === true) {
+			compact.preset = true;
+		}
+		if (payload && payload.command === true) {
+			compact.command = true;
+		}
+		copyKnownFields(payload, compact);
+		if (payload && payload.clips) {
+			compact.clips = compactClips(payload.clips);
+		}
+		if (payload && payload.failures) {
+			compact.failures = compactFailures(payload.failures, MAX_CLIP_FAILURES);
+		}
+		return compact;
+	}
+
+	function emergencyResult(payload) {
+		return {
+			ok: !!(payload && payload.ok === true),
+			preset: true,
+			command: true,
+			presetName: payload && payload.presetName ? clipText(payload.presetName, 80) : "",
+			selectedCount: payload && payload.selectedCount ? payload.selectedCount : 0,
+			successfulCount: payload && payload.successfulCount ? payload.successfulCount : 0,
+			failedCount: payload && payload.failedCount ? payload.failedCount : 0,
+			resultTruncated: true,
+			reason: (payload && payload.reason) || (payload && payload.ok ? "" : "WRITE_FAILED"),
+			detail: "Preset result exceeded transport limit."
+		};
+	}
+
+	function stripUnsafe(value, depth) {
+		var out;
+		var key;
+		var i;
+		if (value === undefined || value === null) {
+			return value;
+		}
+		if (depth > 8) {
+			return undefined;
+		}
+		if (typeof value === "function") {
+			return undefined;
+		}
+		if (typeof value !== "object") {
+			return value;
+		}
+		if (Object.prototype.toString.call(value) === "[object Array]") {
+			out = [];
+			for (i = 0; i < value.length && i < 400; i++) {
+				out.push(stripUnsafe(value[i], depth + 1));
+			}
+			return out;
+		}
+		out = {};
+		for (key in value) {
+			if (!value.hasOwnProperty(key)) {
+				continue;
+			}
+			if (key.charAt(0) === "_" || key === "debug" || key === "log" || key === "item" || key === "items") {
+				continue;
+			}
+			if (typeof value[key] === "function") {
+				continue;
+			}
+			out[key] = stripUnsafe(value[key], depth + 1);
+		}
+		return out;
+	}
+
 	function stringify(payload) {
+		var safe;
 		var json;
 		try {
-			json = JSON.stringify(payload);
+			safe = stripUnsafe(payload, 0);
+			json = JSON.stringify(safe);
 		} catch (serErr) {
 			return JSON.stringify(fail("WRITE_FAILED", "Could not serialize preset result."));
 		}
-		if (json && json.length > 30000) {
-			payload.debug = undefined;
-			payload.log = undefined;
+		if (json && json.length > MAX_RESULT_BYTES) {
+			safe = compactResult(safe || payload);
 			try {
-				json = JSON.stringify(payload);
-			} catch (ignore) {}
+				json = JSON.stringify(safe);
+			} catch (compactErr) {
+				json = "";
+			}
+			while (json && json.length > MAX_RESULT_BYTES && safe.clips && safe.clips.length) {
+				safe.clips = safe.clips.slice(0, safe.clips.length - 1);
+				json = JSON.stringify(safe);
+			}
+			if (!json || json.length > MAX_RESULT_BYTES) {
+				try {
+					json = JSON.stringify(emergencyResult(payload));
+				} catch (emergencyErr) {
+					json = "";
+				}
+			}
+		}
+		if (!json || json.length > MAX_RESULT_BYTES) {
+			json = JSON.stringify({
+				ok: false,
+				reason: "WRITE_FAILED",
+				detail: "Preset result exceeded transport limit.",
+				resultTruncated: true,
+				preset: true
+			});
 		}
 		return json;
 	}
@@ -110,9 +321,60 @@ var PresetHost = (function () {
 		return countInfo ? countInfo.count : -1;
 	}
 
+	function componentStackSignatureFromRows(rows) {
+		var counts = {};
+		var stack = [];
+		var i;
+		var matchName;
+		var displayName;
+		var key;
+		for (i = 0; i < (rows || []).length; i++) {
+			matchName = String((rows[i] && rows[i].matchName) || "");
+			displayName = String((rows[i] && rows[i].displayName) || "");
+			key = matchName + "|" + displayName;
+			counts[key] = (counts[key] || 0) + 1;
+			stack.push(key + "#" + counts[key]);
+		}
+		return stack;
+	}
+
+	function stacksEqual(a, b) {
+		var i;
+		if (!a || !b || a.length !== b.length) {
+			return false;
+		}
+		for (i = 0; i < a.length; i++) {
+			if (a[i] !== b[i]) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	function identityRows(rows) {
+		var out = [];
+		var i;
+		var row;
+		for (i = 0; i < (rows || []).length; i++) {
+			row = rows[i];
+			out.push({
+				index: row.index,
+				displayName: row.displayName || "",
+				matchName: row.matchName || "",
+				premiereName: row.premiereName || row.displayName || "",
+				kind: row.kind || "effect",
+				instanceID: row.instanceID || "",
+				instanceName: row.instanceName || "",
+				id: row.id || ""
+			});
+		}
+		return out;
+	}
+
 	function fingerprintItem(item) {
 		var name = "";
 		var trackIndex = null;
+		var rows;
 		try {
 			name = String(item.name || "");
 		} catch (ignoreName) {}
@@ -121,12 +383,14 @@ var PresetHost = (function () {
 				trackIndex = item.parentTrackIndex;
 			}
 		} catch (ignoreTrack) {}
+		rows = snapshotComponents(item);
 		return {
 			sequenceName: sequenceName(),
 			parentTrackIndex: trackIndex,
 			startTicks: readTicks(item),
 			clipName: name,
-			componentCount: componentCount(item)
+			componentCount: rows.length ? rows.length : componentCount(item),
+			componentStack: componentStackSignatureFromRows(rows)
 		};
 	}
 
@@ -138,7 +402,8 @@ var PresetHost = (function () {
 			a.parentTrackIndex === b.parentTrackIndex &&
 			a.startTicks === b.startTicks &&
 			a.clipName === b.clipName &&
-			a.componentCount === b.componentCount;
+			a.componentCount === b.componentCount &&
+			stacksEqual(a.componentStack, b.componentStack);
 	}
 
 	function selectedVideo() {
@@ -182,6 +447,9 @@ var PresetHost = (function () {
 				matchName: matchName,
 				premiereName: displayName,
 				kind: api && api.isIntrinsicComponent(matchName, displayName) ? "intrinsic" : "effect",
+				instanceID: res.readString(component, "instanceID") || res.readString(component, "instanceId") || "",
+				instanceName: res.readString(component, "instanceName") || "",
+				id: res.readString(component, "id") || "",
 				_component: component
 			});
 		}
@@ -500,6 +768,7 @@ var PresetHost = (function () {
 			ok: true,
 			session: session,
 			clipName: session.clipName,
+			componentStack: session.componentStack,
 			components: components
 		});
 	}
@@ -519,7 +788,7 @@ var PresetHost = (function () {
 		}
 		item = selected.items[0];
 		live = fingerprintItem(item);
-		if (session && !fingerprintsEqual(session, live)) {
+		if (!session || !fingerprintsEqual(session, live)) {
 			return fail("CAPTURE_SOURCE_CHANGED", "The selected clip changed.");
 		}
 		return { ok: true, item: item, session: live };
@@ -599,21 +868,75 @@ var PresetHost = (function () {
 		}
 	}
 
-	function trackLockedMessage(item) {
+	function mapTargetClip(item) {
 		var mapped;
 		var qeSequence;
-		if (typeof $ === "undefined" || !$._pickfxQE) {
-			return "";
+		if (typeof $ === "undefined" || !$._pickfxQE || !$._pickfxQE.findQEClip) {
+			return {
+				ok: false,
+				reason: "QE_MAPPING_FAILED",
+				detail: "QE mapping is not available."
+			};
 		}
 		try {
 			$._pickfxQE.enable();
 			qeSequence = qe.project.getActiveSequence();
 			mapped = $._pickfxQE.findQEClip(qeSequence, item);
-			if (mapped && mapped.error && mapped.error.reason === "Track is locked") {
-				return "Track locked";
-			}
-		} catch (ignore) {}
+		} catch (mapErr) {
+			return {
+				ok: false,
+				reason: "QE_MAPPING_FAILED",
+				detail: String(mapErr)
+			};
+		}
+		if (mapped && mapped.error && mapped.error.reason === "Track is locked") {
+			return {
+				ok: false,
+				reason: "TRACK_LOCKED",
+				detail: "Track locked"
+			};
+		}
+		if (!mapped || !mapped.clip) {
+			return {
+				ok: false,
+				reason: "QE_MAPPING_FAILED",
+				detail: (mapped && mapped.error && (mapped.error.detail || mapped.error.reason)) ||
+					"Could not map clip to QE item."
+			};
+		}
+		return { ok: true, clip: mapped.clip };
+	}
+
+	function trackLockedMessage(item) {
+		var mapped = mapTargetClip(item);
+		if (mapped && mapped.reason === "TRACK_LOCKED") {
+			return mapped.detail || "Track locked";
+		}
 		return "";
+	}
+
+	function clipExtras(item, index) {
+		return {
+			clipName: clipNameOf(item),
+			clipIndex: index
+		};
+	}
+
+	function preflightClip(item, index, needsQE) {
+		var mapped;
+		var extras = clipExtras(item, index);
+		if (needsQE) {
+			mapped = mapTargetClip(item);
+			if (!mapped.ok) {
+				return fail(mapped.reason, mapped.detail, extras);
+			}
+			return { ok: true };
+		}
+		mapped = mapTargetClip(item);
+		if (mapped && mapped.reason === "TRACK_LOCKED") {
+			return fail("TRACK_LOCKED", mapped.detail, extras);
+		}
+		return { ok: true };
 	}
 
 	function findParam(component, spec, leaves) {
@@ -923,13 +1246,18 @@ var PresetHost = (function () {
 	function preflight(preset) {
 		var selected;
 		var required;
+		var needsQE;
 		var i;
+		var clipCheck;
 		if (!(app && app.project && app.project.activeSequence)) {
 			return fail("NO_VIDEO_SELECTION", "No active sequence.");
 		}
 		selected = selectedVideo();
 		if (!selected || selected.ok !== true || !selected.count) {
-			return fail("NO_VIDEO_SELECTION", "Select a video clip.");
+			return fail(
+				(selected && selected.reason) || "NO_VIDEO_SELECTION",
+				(selected && selected.detail) || "Select a video clip."
+			);
 		}
 		required = schema().requiredEffects(preset);
 		for (i = 0; i < required.length; i++) {
@@ -939,6 +1267,13 @@ var PresetHost = (function () {
 					required[i] + " isn’t installed.",
 					{ effect: required[i] }
 				);
+			}
+		}
+		needsQE = required.length > 0;
+		for (i = 0; i < selected.items.length; i++) {
+			clipCheck = preflightClip(selected.items[i], i, needsQE);
+			if (!clipCheck.ok) {
+				return clipCheck;
 			}
 		}
 		return {
@@ -1002,12 +1337,226 @@ var PresetHost = (function () {
 		});
 	}
 
+	function findNamedParam(component, paramName) {
+		var leaves = [];
+		var i;
+		var foldName = String(paramName || "").toLowerCase();
+		walkParams(component, leaves, "");
+		for (i = 0; i < leaves.length; i++) {
+			if (String(leaves[i].displayName || "").toLowerCase() === foldName) {
+				return leaves[i];
+			}
+		}
+		return null;
+	}
+
+	function matchingEffectRows(rows, spec) {
+		var hits = [];
+		var i;
+		for (i = 0; i < (rows || []).length; i++) {
+			if (schema().matchesExpectedEffect(rows[i], spec)) {
+				hits.push(rows[i]);
+			}
+		}
+		return hits;
+	}
+
+	function hasUsableInstanceIdentity(rows) {
+		var i;
+		var token;
+		var seen = {};
+		var found = 0;
+		for (i = 0; i < (rows || []).length; i++) {
+			token = String((rows[i] && (rows[i].instanceID || rows[i].id)) || "");
+			if (!token || seen[token]) {
+				return false;
+			}
+			seen[token] = true;
+			found += 1;
+		}
+		return found === (rows || []).length && found > 0;
+	}
+
+	function probeDuplicateEffectInsert() {
+		var spec = {
+			displayName: "Gaussian Blur",
+			matchName: "AE.ADBE Gaussian Blur",
+			premiereName: "Gaussian Blur"
+		};
+		var paramName = "Blurriness";
+		var selected;
+		var item;
+		var before;
+		var after;
+		var existingHits;
+		var existingParam;
+		var added;
+		var identity;
+		var written;
+		var newParam;
+		var existingValue = null;
+		var newValue = null;
+		var proven = false;
+		selected = selectedVideo();
+		if (!selected || selected.ok !== true) {
+			return stringify(fail(
+				(selected && selected.reason) || "NO_VIDEO_SELECTION",
+				(selected && selected.detail) || "Select a video clip.",
+				{ liveProbe: true }
+			));
+		}
+		if (selected.count !== 1) {
+			return stringify(fail(
+				"CAPTURE_REQUIRES_SINGLE_CLIP",
+				"Live duplicate-effect probe requires one selected clip.",
+				{ liveProbe: true }
+			));
+		}
+		item = selected.items[0];
+		before = snapshotComponents(item);
+		existingHits = matchingEffectRows(before, spec);
+		if (!existingHits.length) {
+			return stringify(fail(
+				"COMPONENT_NOT_FOUND",
+				"Live case requires an existing Gaussian Blur set to 5 before adding a duplicate.",
+				{ liveProbe: true }
+			));
+		}
+		existingParam = findNamedParam(existingHits[0]._component, paramName);
+		if (!existingParam || !existingParam.param) {
+			return stringify(fail(
+				"PARAMETER_NOT_FOUND",
+				"Could not read Blurriness on the existing Gaussian Blur.",
+				{ liveProbe: true }
+			));
+		}
+		written = writeParam(existingParam.param, {
+			displayName: paramName,
+			type: "number",
+			value: 5
+		});
+		if (!written || written.ok !== true) {
+			return stringify(fail(
+				(written && written.reason) || "WRITE_FAILED",
+				"Could not set the existing Gaussian Blur to 5.",
+				{ liveProbe: true }
+			));
+		}
+		try {
+			existingValue = existingParam.param.getValue();
+		} catch (readExistingErr) {
+			existingValue = null;
+		}
+		before = snapshotComponents(item);
+		added = addEffect(item, spec.premiereName);
+		if (!added || added.ok !== true) {
+			return stringify({
+				ok: false,
+				liveProbe: true,
+				reason: (added && added.reason) || "WRITE_FAILED",
+				detail: (added && added.detail) || (added && added.message) || "Could not add Gaussian Blur.",
+				wroteNewInstance: false,
+				existingValue: existingValue,
+				beforeStack: componentStackSignatureFromRows(before),
+				beforeComponents: identityRows(before)
+			});
+		}
+		after = snapshotComponents(item);
+		identity = schema().identifyInserted(before, after);
+		if (!identity || identity.ok !== true || !identity.component || !identity.component._component) {
+			return stringify({
+				ok: false,
+				liveProbe: true,
+				reason: "NEW_EFFECT_INSTANCE_AMBIGUOUS",
+				detail: "QE insert did not prove which Gaussian Blur instance is new.",
+				instanceIdentityAvailable: hasUsableInstanceIdentity(after),
+				wroteNewInstance: false,
+				existingValue: existingValue,
+				beforeStack: componentStackSignatureFromRows(before),
+				afterStack: componentStackSignatureFromRows(after),
+				beforeComponents: identityRows(before),
+				afterComponents: identityRows(after),
+				identify: identity
+			});
+		}
+		if (identity.component._component === existingHits[0]._component) {
+			return stringify({
+				ok: false,
+				liveProbe: true,
+				reason: "NEW_EFFECT_INSTANCE_AMBIGUOUS",
+				detail: "Insert identity resolved to the existing Gaussian Blur.",
+				instanceIdentityAvailable: hasUsableInstanceIdentity(after),
+				wroteNewInstance: false,
+				existingValue: existingValue,
+				beforeStack: componentStackSignatureFromRows(before),
+				afterStack: componentStackSignatureFromRows(after),
+				beforeComponents: identityRows(before),
+				afterComponents: identityRows(after)
+			});
+		}
+		newParam = findNamedParam(identity.component._component, paramName);
+		if (!newParam || !newParam.param) {
+			return stringify({
+				ok: false,
+				liveProbe: true,
+				reason: "NEW_EFFECT_INSTANCE_AMBIGUOUS",
+				detail: "Could not read Blurriness on the candidate new instance.",
+				wroteNewInstance: false,
+				existingValue: existingValue,
+				beforeStack: componentStackSignatureFromRows(before),
+				afterStack: componentStackSignatureFromRows(after),
+				beforeComponents: identityRows(before),
+				afterComponents: identityRows(after)
+			});
+		}
+		written = writeParam(newParam.param, {
+			displayName: paramName,
+			type: "number",
+			value: 30
+		});
+		try {
+			existingValue = existingParam.param.getValue();
+		} catch (rereadErr) {
+			existingValue = null;
+		}
+		try {
+			newValue = newParam.param.getValue();
+		} catch (newReadErr) {
+			newValue = null;
+		}
+		proven = written && written.ok === true &&
+			valuesClose("number", 5, existingValue).ok &&
+			valuesClose("number", 30, newValue).ok;
+		return stringify({
+			ok: proven,
+			liveProbe: true,
+			reason: proven ? "" : "NEW_EFFECT_INSTANCE_AMBIGUOUS",
+			detail: proven
+				? "New Gaussian Blur instance was identified and written independently."
+				: "Could not prove the new Gaussian Blur instance without changing the existing one.",
+			instanceIdentityAvailable: hasUsableInstanceIdentity(after),
+			wroteNewInstance: proven,
+			existingValue: existingValue,
+			newValue: newValue,
+			identifyVia: identity.via || "",
+			beforeStack: componentStackSignatureFromRows(before),
+			afterStack: componentStackSignatureFromRows(after),
+			beforeComponents: identityRows(before),
+			afterComponents: identityRows(after)
+		});
+	}
+
 	return {
 		PAGE_SIZE: PAGE_SIZE,
+		MAX_RESULT_BYTES: MAX_RESULT_BYTES,
 		listCapturableComponents: listCapturableComponents,
 		captureComponent: captureComponent,
 		applyPreset: applyPreset,
 		preflight: preflight,
+		stringify: stringify,
+		fingerprintItem: fingerprintItem,
+		componentStackSignatureFromRows: componentStackSignatureFromRows,
+		probeDuplicateEffectInsert: probeDuplicateEffectInsert,
 		identifyInserted: function (before, after) {
 			return schema().identifyInserted(before, after);
 		},

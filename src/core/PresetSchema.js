@@ -319,16 +319,75 @@ var PresetSchema = (function () {
 		return fold(row && (row.matchName || "")) + "||" + fold(row && (row.displayName || row.premiereName || ""));
 	}
 
+	function instanceIdentity(row) {
+		var token;
+		if (!row) {
+			return "";
+		}
+		token = trim(row.instanceID || row.instanceId || row.id || row.guid || "");
+		return token;
+	}
+
+	function identifyByInstanceIdentity(before, after) {
+		var beforeIds = {};
+		var seenAfter = {};
+		var hits = [];
+		var i;
+		var token;
+		for (i = 0; i < before.length; i++) {
+			token = instanceIdentity(before[i]);
+			if (!token) {
+				continue;
+			}
+			if (beforeIds[token]) {
+				return null;
+			}
+			beforeIds[token] = true;
+		}
+		for (i = 0; i < after.length; i++) {
+			token = instanceIdentity(after[i]);
+			if (!token) {
+				continue;
+			}
+			if (seenAfter[token]) {
+				return null;
+			}
+			seenAfter[token] = true;
+			if (!beforeIds[token]) {
+				hits.push({
+					component: after[i],
+					index: typeof after[i].index === "number" ? after[i].index : i
+				});
+			}
+		}
+		if (hits.length !== 1) {
+			return null;
+		}
+		return {
+			ok: true,
+			component: hits[0].component,
+			index: hits[0].index,
+			via: "instance-id"
+		};
+	}
+
 	function identifyInserted(before, after) {
 		var i;
 		var j;
 		var inserted;
+		var key;
+		var existed;
+		var byId;
 		if (!after || !before || after.length !== before.length + 1) {
 			return {
 				ok: false,
 				reason: "NEW_EFFECT_INSTANCE_AMBIGUOUS",
 				detail: "Could not identify the newly added effect."
 			};
+		}
+		byId = identifyByInstanceIdentity(before, after);
+		if (byId) {
+			return byId;
 		}
 		i = 0;
 		while (i < before.length && componentKey(before[i]) === componentKey(after[i])) {
@@ -353,10 +412,26 @@ var PresetSchema = (function () {
 				detail: "Could not identify the newly added effect."
 			};
 		}
+		key = componentKey(inserted);
+		existed = false;
+		for (j = 0; j < before.length; j++) {
+			if (componentKey(before[j]) === key) {
+				existed = true;
+				break;
+			}
+		}
+		if (existed) {
+			return {
+				ok: false,
+				reason: "NEW_EFFECT_INSTANCE_AMBIGUOUS",
+				detail: "Duplicate same-name effect has no proven instance identity."
+			};
+		}
 		return {
 			ok: true,
 			component: inserted,
-			index: typeof inserted.index === "number" ? inserted.index : i
+			index: typeof inserted.index === "number" ? inserted.index : i,
+			via: "structural"
 		};
 	}
 

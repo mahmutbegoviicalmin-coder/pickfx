@@ -2,6 +2,9 @@
 	var startCount = passed + failed;
 	var scripts;
 	var payload;
+	var captureScript;
+	var applyCalls;
+	var i;
 
 	function mockCS(results) {
 		var i = 0;
@@ -356,6 +359,79 @@
 	assert("bridge exposes applyPickFXPreset", typeof PremiereBridge.applyPickFXPreset === "function");
 	assert("bridge exposes paged capture", typeof PremiereBridge.captureComponent === "function");
 	assert("bridge exposes listCapturableComponents", typeof PremiereBridge.listCapturableComponents === "function");
+	assertEq(
+		"captureComponent script passes offset once",
+		PremiereBridge.captureComponentScript({ clipName: "A" }, 2, 40, 20),
+		"$._pickfx.captureComponent({\"clipName\":\"A\"},2,40,20)"
+	);
+	assert(
+		"captureComponent script does not duplicate offset",
+		PremiereBridge.captureComponentScript({ clipName: "A" }, 2, 40, 20).indexOf("40,40,20") === -1
+	);
+
+	function mockPresetHostCS(onScript) {
+		return {
+			evalScript: function (script, done) {
+				scripts.push(String(script || ""));
+				if (onScript) {
+					onScript(String(script || ""));
+				}
+				if (String(script).indexOf("presetHostStatus") !== -1 ||
+						String(script).indexOf("listCapturable") !== -1) {
+					done(JSON.stringify({
+						ok: true,
+						host: true,
+						listCapturable: true,
+						applyPreset: true,
+						presetHost: true
+					}));
+					return;
+				}
+				if (String(script).indexOf("applyPickFXPreset") !== -1) {
+					done("EvalScript error.");
+					return;
+				}
+				done(JSON.stringify({
+					ok: true,
+					hasMore: false,
+					parameters: [],
+					skipped: []
+				}));
+			},
+			getSystemPath: function () {
+				return "/tmp/PickFX";
+			}
+		};
+	}
+
+	scripts = [];
+	PremiereBridge.captureComponent(mockPresetHostCS(), { clipName: "A" }, 2, 40, 20, function (result) {
+		payload = result;
+	});
+	captureScript = "";
+	for (i = 0; i < scripts.length; i++) {
+		if (scripts[i].indexOf("$._pickfx.captureComponent(") !== -1) {
+			captureScript = scripts[i];
+			break;
+		}
+	}
+	assert("paged capture evalScript includes captureComponent", captureScript.indexOf("$._pickfx.captureComponent(") === 0);
+	assert("paged capture evalScript is session,index,40,20", captureScript.indexOf(",2,40,20)") !== -1);
+	assert("paged capture evalScript is not session,index,40,40,20", captureScript.indexOf(",2,40,40,20)") === -1);
+
+	scripts = [];
+	applyCalls = 0;
+	PremiereBridge.applyPickFXPreset(mockPresetHostCS(function (script) {
+		if (String(script).indexOf("$._pickfx.applyPickFXPreset(") !== -1) {
+			applyCalls += 1;
+		}
+	}), { schemaVersion: 1, id: "preset_1_ab", name: "Talking Head Clean", components: [] }, function (result) {
+		payload = result;
+	});
+	assertEq("uncertain apply evalScript is not retried", applyCalls, 1);
+	assertEq("uncertain apply evalScript stays failed", payload && payload.ok, false);
+	assertEq("uncertain apply evalScript does not look like missing host", payload.reason, "WRITE_FAILED");
+	assertEq("uncertain apply evalScript keeps hostReady", payload.hostReady, true);
 
 	print("premiere bridge: " + ((passed + failed) - startCount) + " assertions");
 }());

@@ -4686,6 +4686,29 @@ $._pickfx = {
 		}
 	},
 
+	probeDuplicatePresetEffectInsert: function () {
+		try {
+			if (typeof $._pickfxPresetHost === "undefined" || !$._pickfxPresetHost.probeDuplicateEffectInsert) {
+				return JSON.stringify({
+					ok: false,
+					reason: "WRITE_FAILED",
+					detail: "PresetHost is not loaded.",
+					liveProbe: true,
+					preset: true
+				});
+			}
+			return $._pickfxPresetHost.probeDuplicateEffectInsert();
+		} catch (e) {
+			return JSON.stringify({
+				ok: false,
+				reason: "WRITE_FAILED",
+				detail: String(e),
+				liveProbe: true,
+				preset: true
+			});
+		}
+	},
+
 	runAction: function (spec) {
 		var result;
 		var safe;

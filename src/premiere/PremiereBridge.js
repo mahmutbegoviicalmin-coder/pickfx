@@ -1332,19 +1332,25 @@ var PremiereBridge = (function () {
 		withPresetHost(csInterface, "$._pickfx.listCapturableComponents()", done);
 	}
 
-	function captureComponent(csInterface, session, componentIndex, offset, limit, done) {
-		var script = "$._pickfx.captureComponent(" +
+	function captureComponentScript(session, componentIndex, offset, limit) {
+		return "$._pickfx.captureComponent(" +
 			JSON.stringify(session || {}) + "," +
 			JSON.stringify(componentIndex) + "," +
 			JSON.stringify(offset) + "," +
-			JSON.stringify(offset) + "," +
 			JSON.stringify(limit) + ")";
-		withPresetHost(csInterface, script, done);
+	}
+
+	function captureComponent(csInterface, session, componentIndex, offset, limit, done) {
+		withPresetHost(csInterface, captureComponentScript(session, componentIndex, offset, limit), done);
 	}
 
 	function applyPickFXPreset(csInterface, preset, done) {
 		var script = "$._pickfx.applyPickFXPreset(" + JSON.stringify(preset || {}) + ")";
 		withPresetHost(csInterface, script, done);
+	}
+
+	function probeDuplicatePresetEffectInsert(csInterface, done) {
+		withPresetHost(csInterface, "$._pickfx.probeDuplicatePresetEffectInsert()", done);
 	}
 
 	function runActionScript(spec) {
@@ -1629,8 +1635,10 @@ var PremiereBridge = (function () {
 		runAction: runAction,
 		ensurePresetHost: ensurePresetHost,
 		listCapturableComponents: listCapturableComponents,
+		captureComponentScript: captureComponentScript,
 		captureComponent: captureComponent,
 		applyPickFXPreset: applyPickFXPreset,
+		probeDuplicatePresetEffectInsert: probeDuplicatePresetEffectInsert,
 		findTypedCandidates: findTypedCandidates
 	};
 }());

@@ -13,6 +13,25 @@
 	var inserted;
 	var motion;
 	var blur;
+	var stack;
+	var session;
+	var clipA;
+	var clipB;
+	var blurParam;
+	var cropParam;
+	var keyframedParam;
+	var pageCalls;
+	var savedBridge;
+	var huge;
+	var raw;
+	var cyclic;
+	var qeOptions;
+	var previousApp;
+	var previousQE;
+	var previousPickfx;
+	var previousPickfxQE;
+	var previousResolver;
+	var i;
 
 	function memoryFs() {
 		var files = {};
@@ -220,9 +239,391 @@
 		supportedParameterCount: 0
 	}) === false);
 
-	assert("keyframed skip reason is explicit", "KEYFRAMED_PARAMETER_UNSUPPORTED".indexOf("KEYFRAMED") === 0);
 	assert("unsupported skip reason is explicit", PresetSchema.isSupportedType("color") === false);
 	assert("enum is not claimed in v1", PresetSchema.isSupportedType("enum") === false);
+
+	stack = PresetHost.componentStackSignatureFromRows([
+		{ matchName: "AE.ADBE Motion", displayName: "Motion" },
+		{ matchName: "AE.ADBE Opacity", displayName: "Opacity" },
+		{ matchName: "AE.ADBE Gaussian Blur", displayName: "Gaussian Blur" },
+		{ matchName: "AE.ADBE Gaussian Blur", displayName: "Gaussian Blur" }
+	]);
+	assertEq(
+		"component stack uses matchName, displayName, and occurrence ordinal",
+		stack.join(","),
+		"AE.ADBE Motion|Motion#1,AE.ADBE Opacity|Opacity#1,AE.ADBE Gaussian Blur|Gaussian Blur#1,AE.ADBE Gaussian Blur|Gaussian Blur#2"
+	);
+	assert(
+		"same count different stack is a fingerprint change",
+		PresetHost.fingerprintsEqual({
+			sequenceName: "Seq",
+			parentTrackIndex: 0,
+			startTicks: "10",
+			clipName: "Talking",
+			componentCount: 2,
+			componentStack: ["AE.ADBE Motion|Motion#1", "AE.ADBE Gaussian Blur|Gaussian Blur#1"]
+		}, {
+			sequenceName: "Seq",
+			parentTrackIndex: 0,
+			startTicks: "10",
+			clipName: "Talking",
+			componentCount: 2,
+			componentStack: ["AE.ADBE Motion|Motion#1", "AE.ADBE Crop|Crop#1"]
+		}) === false
+	);
+
+	function mockResolver() {
+		return {
+			readString: function (obj, key) {
+				if (!obj || obj[key] === undefined || obj[key] === null || obj[key] === "") {
+					return null;
+				}
+				return String(obj[key]);
+			},
+			collectionCount: function (col) {
+				if (col && typeof col.numItems === "number") {
+					return { count: col.numItems, via: "numItems" };
+				}
+				return { count: -1, via: "" };
+			},
+			collectionIndexBase: function () {
+				return 0;
+			},
+			collectionItem: function (col, index) {
+				return col[index];
+			}
+		};
+	}
+
+	function makeParam(name, value, options) {
+		options = options || {};
+		return {
+			displayName: name,
+			matchName: "",
+			_value: value,
+			_writes: [],
+			isTimeVarying: function () {
+				return options.keyframed === true;
+			},
+			getValue: function () {
+				return this._value;
+			},
+			setValue: function (next) {
+				this._writes.push(next);
+				this._value = next;
+				return true;
+			}
+		};
+	}
+
+	function makeComponent(displayName, matchName, params) {
+		var properties = { numItems: (params || []).length };
+		var n;
+		for (n = 0; n < (params || []).length; n++) {
+			properties[n] = params[n];
+		}
+		return {
+			displayName: displayName,
+			matchName: matchName,
+			properties: properties
+		};
+	}
+
+	function makeClip(options) {
+		var comps = options.components || [];
+		var col = { numItems: comps.length };
+		var n;
+		for (n = 0; n < comps.length; n++) {
+			col[n] = comps[n];
+		}
+		return {
+			name: options.name || "Clip A",
+			parentTrackIndex: options.track === undefined ? 0 : options.track,
+			start: { ticks: options.ticks || "100" },
+			locked: options.locked === true,
+			components: col
+		};
+	}
+
+	function installHostMocks(selectedItems, qeOptions) {
+		qeOptions = qeOptions || {};
+		app = {
+			project: {
+				activeSequence: { name: "Seq 1" }
+			}
+		};
+		qe = {
+			project: {
+				getActiveSequence: function () {
+					return { name: "Seq 1" };
+				}
+			}
+		};
+		$._pickfxParameterResolver = mockResolver();
+		$._pickfx = {
+			selectedVideoTrackItems: function () {
+				if (!selectedItems || !selectedItems.length) {
+					return {
+						ok: false,
+						reason: "NO_VIDEO_SELECTION",
+						detail: "Select a video clip."
+					};
+				}
+				return {
+					ok: true,
+					count: selectedItems.length,
+					items: selectedItems
+				};
+			}
+		};
+		$._pickfxQE = {
+			enable: function () {},
+			getVideoEffectByName: function (name) {
+				if (qeOptions.missingEffect === name) {
+					return null;
+				}
+				return { name: name };
+			},
+			findQEClip: function (seq, item) {
+				qeOptions.mapCalls.push(item.name);
+				if (item.locked) {
+					return { error: { reason: "Track is locked", clip: item.name } };
+				}
+				if (qeOptions.unmap && qeOptions.unmap[item.name]) {
+					return { error: { reason: "Could not map clip to QE item.", clip: item.name } };
+				}
+				return { clip: { name: item.name } };
+			},
+			applyEffectToTrackItem: function (item, effect) {
+				var next;
+				qeOptions.addCalls.push(item.name);
+				if (qeOptions.mutateOnAdd) {
+					next = item.components.numItems;
+					item.components[next] = makeComponent(
+						"Gaussian Blur",
+						"AE.ADBE Gaussian Blur",
+						[makeParam("Blurriness", 0)]
+					);
+					item.components.numItems += 1;
+				}
+				return { ok: true };
+			}
+		};
+		if (!qeOptions.mapCalls) {
+			qeOptions.mapCalls = [];
+		}
+		if (!qeOptions.addCalls) {
+			qeOptions.addCalls = [];
+		}
+		return qeOptions;
+	}
+
+	previousApp = typeof app !== "undefined" ? app : undefined;
+	previousQE = typeof qe !== "undefined" ? qe : undefined;
+	previousPickfx = $._pickfx;
+	previousPickfxQE = $._pickfxQE;
+	previousResolver = $._pickfxParameterResolver;
+
+	installHostMocks([]);
+	parsed = JSON.parse(PresetHost.listCapturableComponents());
+	assertEq("no video selection blocks capture", parsed.reason, "NO_VIDEO_SELECTION");
+	parsed = JSON.parse(PresetHost.applyPreset(samplePreset("Talking Head Clean").preset));
+	assertEq("no video selection blocks apply", parsed.reason, "NO_VIDEO_SELECTION");
+
+	clipA = makeClip({
+		name: "Clip A",
+		components: [makeComponent("Motion", "AE.ADBE Motion", [makeParam("Scale", 100)])]
+	});
+	clipB = makeClip({
+		name: "Clip B",
+		ticks: "200",
+		components: [makeComponent("Motion", "AE.ADBE Motion", [makeParam("Scale", 100)])]
+	});
+	installHostMocks([clipA, clipB]);
+	parsed = JSON.parse(PresetHost.listCapturableComponents());
+	assertEq("multiple capture clips are rejected", parsed.reason, "CAPTURE_REQUIRES_SINGLE_CLIP");
+
+	blurParam = makeParam("Blurriness", 5);
+	cropParam = makeParam("Left", 8);
+	clipA = makeClip({
+		name: "Talking",
+		components: [
+			makeComponent("Motion", "AE.ADBE Motion", [makeParam("Scale", 100)]),
+			makeComponent("Gaussian Blur", "AE.ADBE Gaussian Blur", [blurParam]),
+			makeComponent("Crop", "AE.ADBE AECrop", [cropParam])
+		]
+	});
+	installHostMocks([clipA]);
+	parsed = JSON.parse(PresetHost.listCapturableComponents());
+	assert("capture session includes component stack", parsed.ok === true && parsed.session.componentStack.length === 3);
+	session = parsed.session;
+	clipA.components[1] = makeComponent("Crop", "AE.ADBE AECrop", [cropParam]);
+	clipA.components[2] = makeComponent("Gaussian Blur", "AE.ADBE Gaussian Blur", [blurParam]);
+	parsed = JSON.parse(PresetHost.captureComponent(session, 1, 0, 20));
+	assertEq("reordered stack with same count invalidates capture", parsed.reason, "CAPTURE_SOURCE_CHANGED");
+
+	keyframedParam = makeParam("Scale", 100, { keyframed: true });
+	clipA = makeClip({
+		name: "Talking",
+		components: [makeComponent("Motion", "AE.ADBE Motion", [keyframedParam])]
+	});
+	installHostMocks([clipA]);
+	parsed = JSON.parse(PresetHost.listCapturableComponents());
+	assert("keyframed component is not fully capturable", parsed.components[0].keyframedCount === 1);
+	parsed = JSON.parse(PresetHost.captureComponent(parsed.session, 0, 0, 20));
+	assert("keyframed parameters are skipped with explicit reason", parsed.skipped.length === 1 &&
+		parsed.skipped[0].reason === "KEYFRAMED_PARAMETER_UNSUPPORTED");
+	assert("keyframed capture does not write values", keyframedParam._writes.length === 0);
+
+	pageCalls = [];
+	savedBridge = typeof PremiereBridge !== "undefined" ? PremiereBridge : undefined;
+	PremiereBridge = {
+		captureComponent: function (csInterface, captureSession, componentIndex, offset, limit, done) {
+			pageCalls.push({
+				index: componentIndex,
+				offset: offset,
+				limit: limit
+			});
+			done({
+				ok: true,
+				hasMore: offset === 0,
+				nextOffset: 20,
+				component: { displayName: "Gaussian Blur", matchName: "AE.ADBE Gaussian Blur" },
+				parameters: [],
+				skipped: []
+			});
+		}
+	};
+	PresetCapture.captureComponents({}, { clipName: "Talking" }, [0], function () {});
+	PremiereBridge = savedBridge;
+	assertEq("paged capture requests two pages", pageCalls.length, 2);
+	assertEq("first capture page uses PAGE_SIZE 20", pageCalls[0].limit, PresetCapture.PAGE_SIZE);
+	assertEq("later capture pages use PAGE_SIZE 20", pageCalls[1].limit, 20);
+	assertEq("second capture page starts at 20", pageCalls[1].offset, 20);
+
+	huge = {
+		ok: true,
+		preset: true,
+		command: true,
+		presetName: "Talking Head Clean",
+		selectedCount: 40,
+		successfulCount: 39,
+		failedCount: 1,
+		clips: []
+	};
+	for (i = 0; i < 80; i++) {
+		huge.clips.push({
+			name: "Clip " + i + " " + new Array(200).join("x"),
+			ok: i !== 3,
+			componentsApplied: 2,
+			parametersVerified: 8,
+			reason: i === 3 ? "TRACK_LOCKED" : "",
+			message: i === 3 ? "Track locked " + new Array(400).join("y") : new Array(400).join("z"),
+			failures: i === 3 ? [{ reason: "TRACK_LOCKED", message: new Array(800).join("locked") }] : []
+		});
+	}
+	raw = PresetHost.stringify(huge);
+	parsed = JSON.parse(raw);
+	assert("oversized apply result stays under 30 KB", raw.length <= PresetHost.MAX_RESULT_BYTES);
+	assert("oversized apply result is marked truncated", parsed.resultTruncated === true);
+	assertEq("truncated result keeps preset name", parsed.presetName, "Talking Head Clean");
+	assertEq("truncated result keeps selectedCount", parsed.selectedCount, 40);
+	assertEq("truncated result keeps successfulCount", parsed.successfulCount, 39);
+	assertEq("truncated result keeps failedCount", parsed.failedCount, 1);
+	assert("truncated result keeps a useful failure", parsed.clips && parsed.clips.length && parsed.clips[0].reason === "TRACK_LOCKED");
+
+	cyclic = { ok: false, preset: true, reason: "WRITE_FAILED" };
+	cyclic.self = cyclic;
+	raw = PresetHost.stringify(cyclic);
+	parsed = JSON.parse(raw);
+	assert("malformed result still serializes", raw.length <= PresetHost.MAX_RESULT_BYTES);
+	assert("malformed result does not throw", parsed && parsed.ok === false);
+
+	qeOptions = {
+		mapCalls: [],
+		addCalls: [],
+		mutateOnAdd: true
+	};
+	blurParam = makeParam("Blurriness", 5);
+	clipA = makeClip({
+		name: "Talking",
+		components: [
+			makeComponent("Motion", "AE.ADBE Motion", [makeParam("Scale", 100)]),
+			makeComponent("Gaussian Blur", "AE.ADBE Gaussian Blur", [blurParam])
+		]
+	});
+	installHostMocks([clipA], qeOptions);
+	parsed = JSON.parse(PresetHost.applyPreset(samplePreset("Talking Head Clean", {
+		components: [{
+			order: 0,
+			kind: "effect",
+			displayName: "Gaussian Blur",
+			matchName: "AE.ADBE Gaussian Blur",
+			premiereName: "Gaussian Blur",
+			captureStatus: "full",
+			parameters: [{ order: 0, displayName: "Blurriness", type: "number", value: 30 }]
+		}]
+	}).preset));
+	assertEq("duplicate same-name apply is ambiguous", parsed.clips[0].reason, "NEW_EFFECT_INSTANCE_AMBIGUOUS");
+	assert("existing blur is not rewritten when insert identity is unproven", blurParam._writes.indexOf(30) === -1);
+
+	qeOptions = {
+		mapCalls: [],
+		addCalls: []
+	};
+	clipA = makeClip({
+		name: "Unlocked",
+		components: [makeComponent("Gaussian Blur", "AE.ADBE Gaussian Blur", [makeParam("Blurriness", 5)])]
+	});
+	clipB = makeClip({
+		name: "Locked Clip",
+		ticks: "220",
+		locked: true,
+		components: [makeComponent("Gaussian Blur", "AE.ADBE Gaussian Blur", [makeParam("Blurriness", 5)])]
+	});
+	installHostMocks([clipA, clipB], qeOptions);
+	parsed = JSON.parse(PresetHost.applyPreset(samplePreset("Talking Head Clean").preset));
+	assertEq("locked target preflight aborts the batch", parsed.reason, "TRACK_LOCKED");
+	assertEq("locked target preflight names the failing clip", parsed.clipName, "Locked Clip");
+	assertEq("locked target preflight mutates no clips", qeOptions.addCalls.length, 0);
+
+	qeOptions = {
+		mapCalls: [],
+		addCalls: [],
+		mutateOnAdd: true
+	};
+	blurParam = makeParam("Blurriness", 12);
+	clipA = makeClip({
+		name: "Talking",
+		components: [
+			makeComponent("Gaussian Blur", "AE.ADBE Gaussian Blur", [blurParam])
+		]
+	});
+	installHostMocks([clipA], qeOptions);
+	parsed = JSON.parse(PresetHost.probeDuplicateEffectInsert());
+	assertEq("live duplicate probe stays ambiguous without instance identity", parsed.reason, "NEW_EFFECT_INSTANCE_AMBIGUOUS");
+	assert("live duplicate probe does not write 30 onto the existing blur", blurParam._value === 5 || blurParam._writes.indexOf(30) === -1);
+	assert("live duplicate probe is marked as a probe", parsed.liveProbe === true);
+
+	app = previousApp;
+	qe = previousQE;
+	$._pickfx = previousPickfx;
+	$._pickfxQE = previousPickfxQE;
+	$._pickfxParameterResolver = previousResolver;
+
+	inserted = PresetSchema.identifyInserted(
+		[
+			{ index: 0, displayName: "Motion", matchName: "AE.ADBE Motion" },
+			{ index: 1, displayName: "Gaussian Blur", matchName: "AE.ADBE Gaussian Blur" }
+		],
+		[
+			{ index: 0, displayName: "Motion", matchName: "AE.ADBE Motion" },
+			{ index: 1, displayName: "Gaussian Blur", matchName: "AE.ADBE Gaussian Blur" },
+			{ index: 2, displayName: "Crop", matchName: "AE.ADBE AECrop" }
+		]
+	);
+	assert("unique inserted effect is identified", inserted.ok === true && inserted.index === 2);
+	assert("unique inserted effect keeps structural identity", inserted.component.displayName === "Crop");
 
 	inserted = PresetSchema.identifyInserted(
 		[
@@ -235,8 +636,21 @@
 			{ index: 2, displayName: "Gaussian Blur", matchName: "AE.ADBE Gaussian Blur" }
 		]
 	);
-	assert("duplicate effects stay separate", inserted.ok === true && inserted.index === 2);
-	assert("new instance is the added blur", inserted.component.displayName === "Gaussian Blur");
+	assert("duplicate same-name insert is ambiguous without instance identity", inserted.ok === false && inserted.reason === "NEW_EFFECT_INSTANCE_AMBIGUOUS");
+
+	inserted = PresetSchema.identifyInserted(
+		[
+			{ index: 0, displayName: "Gaussian Blur", matchName: "AE.ADBE Gaussian Blur", instanceID: "blur-a" },
+			{ index: 1, displayName: "Motion", matchName: "AE.ADBE Motion" }
+		],
+		[
+			{ index: 0, displayName: "Gaussian Blur", matchName: "AE.ADBE Gaussian Blur", instanceID: "blur-a" },
+			{ index: 1, displayName: "Motion", matchName: "AE.ADBE Motion" },
+			{ index: 2, displayName: "Gaussian Blur", matchName: "AE.ADBE Gaussian Blur", instanceID: "blur-b" }
+		]
+	);
+	assert("stable instance identity can select the new duplicate", inserted.ok === true && inserted.via === "instance-id");
+	assert("stable instance identity points at the new blur", inserted.component.instanceID === "blur-b");
 
 	inserted = PresetSchema.identifyInserted(
 		[{ index: 0, displayName: "Gaussian Blur", matchName: "AE.ADBE Gaussian Blur" }],
@@ -254,9 +668,6 @@
 		components: []
 	});
 	assert("empty preset is rejected before apply", checked.ok === false && checked.reason === "EMPTY_PRESET");
-
-	assert("no video selection reason exists", true);
-	assert("multiple capture clips reason exists", true);
 
 	row = PresetExecutor.userSummary({
 		ok: false,
