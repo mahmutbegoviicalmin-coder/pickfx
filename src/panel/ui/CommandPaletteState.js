@@ -14,6 +14,10 @@ var CommandPaletteState = (function () {
 		"UNSUPPORTED_OPERATION",
 		"NO_VIDEO_SELECTION",
 		"NO_AUDIO_SELECTION",
+		"COMPONENT_NOT_FOUND",
+		"KEYFRAMES_NOT_SUPPORTED",
+		"INVALID_CLIP_DURATION",
+		"KEYFRAME_CONFLICT",
 		"NEEDS_PARAMETER_CHOICE",
 		"NEEDS_LUMETRI_CHOICE",
 		"INVALID_VALUE",
@@ -23,7 +27,18 @@ var CommandPaletteState = (function () {
 		"NO_EFFECT_SELECTED",
 		"COMPONENTPARAM",
 		"SETVALUE",
-		"USEDQE"
+		"USEDQE",
+		"PRESET_STORAGE_UNAVAILABLE",
+		"CAPTURE_REQUIRES_SINGLE_CLIP",
+		"CAPTURE_SOURCE_CHANGED",
+		"PRESET_EFFECT_UNAVAILABLE",
+		"NEW_EFFECT_INSTANCE_AMBIGUOUS",
+		"EMPTY_PRESET",
+		"EMPTY_NAME",
+		"NAME_CONFLICT",
+		"UNSUPPORTED_SCHEMA",
+		"KEYFRAMED_PARAMETER_UNSUPPORTED",
+		"TRACK_LOCKED"
 	];
 
 	function trim(value) {
@@ -170,6 +185,9 @@ var CommandPaletteState = (function () {
 		if (payload.parameter) {
 			return String(payload.parameter);
 		}
+		if (payload.presetName) {
+			return String(payload.presetName);
+		}
 		return "Command";
 	}
 
@@ -180,9 +198,33 @@ var CommandPaletteState = (function () {
 	}
 
 	function successView(payload) {
+		var presetSummary;
+		var effect = payload && (payload.effect || payload.component)
+			? String(payload.effect || payload.component)
+			: "";
+		var parameter = payload && payload.parameter ? String(payload.parameter) : "";
+		var value = formatDisplayValue(payload && (payload.value !== undefined ? payload.value : payload.requestedValue));
+		var title = successHeadline(payload);
+		var detail = "Applied successfully";
+		if (typeof PresetExecutor !== "undefined" && PresetExecutor.userSummary && payload && payload.preset) {
+			presetSummary = PresetExecutor.userSummary(payload);
+			if (presetSummary) {
+				return {
+					title: "✓ " + presetSummary.title.replace(/^Applied\s+/, ""),
+					detail: presetSummary.detail,
+					footer: presetSummary.footer,
+					holdMs: SUCCESS_HOLD_MS,
+					restorePalette: true
+				};
+			}
+		}
+		if (effect && parameter && parameter !== effect) {
+			title = "✓ " + effect;
+			detail = trim(parameter + (value ? " " + value : ""));
+		}
 		return {
-			title: successHeadline(payload),
-			detail: "Applied successfully",
+			title: title,
+			detail: detail,
 			footer: "Applied successfully",
 			holdMs: SUCCESS_HOLD_MS,
 			restorePalette: true
@@ -191,14 +233,10 @@ var CommandPaletteState = (function () {
 
 	function recentLabel(payload, query) {
 		var name = commandName(payload);
-		var value = formatDisplayValue(payload && (payload.value !== undefined ? payload.value : payload.requestedValue));
-		if (name && name !== "Command" && value !== "") {
-			return name + " " + value;
-		}
 		if (name && name !== "Command") {
 			return name;
 		}
-		return trim(query);
+		return trim(String(query || "")).replace(/\s+-?\d+(\.\d+)?$/, "");
 	}
 
 	function applyingLabel() {
@@ -255,6 +293,92 @@ var CommandPaletteState = (function () {
 				footer: "Select a video clip"
 			};
 		}
+		if (reason === "CAPTURE_REQUIRES_SINGLE_CLIP" || reason === "MULTIPLE_CLIPS_SELECTED") {
+			return {
+				title: "Select one clip",
+				detail: reason === "CAPTURE_REQUIRES_SINGLE_CLIP"
+					? "Capture works on one selected clip."
+					: "PickFX works on one selected video clip at a time.",
+				footer: "Select one clip"
+			};
+		}
+		if (reason === "CAPTURE_SOURCE_CHANGED") {
+			return {
+				title: "Clip changed",
+				detail: "The selected clip changed. Capture again.",
+				footer: "Clip changed"
+			};
+		}
+		if (reason === "PRESET_STORAGE_UNAVAILABLE") {
+			return {
+				title: "Couldn't save preset",
+				detail: "PickFX couldn’t reach the presets folder.",
+				footer: "Couldn't save preset"
+			};
+		}
+		if (reason === "PRESET_EFFECT_UNAVAILABLE") {
+			return {
+				title: "Effect isn’t installed",
+				detail: "A required effect isn’t available in this Premiere.",
+				footer: "Effect isn’t installed"
+			};
+		}
+		if (reason === "NEW_EFFECT_INSTANCE_AMBIGUOUS") {
+			return {
+				title: "Couldn't apply that look",
+				detail: "PickFX wouldn’t risk changing an existing effect.",
+				footer: "Couldn't apply that look"
+			};
+		}
+		if (reason === "EMPTY_PRESET" || reason === "EMPTY_NAME") {
+			return {
+				title: reason === "EMPTY_NAME" ? "Name this preset" : "Nothing to save",
+				detail: reason === "EMPTY_NAME" ? "Give the preset a name." : "Select at least one supported effect.",
+				footer: reason === "EMPTY_NAME" ? "Name this preset" : "Nothing to save"
+			};
+		}
+		if (reason === "UNSUPPORTED_SCHEMA") {
+			return {
+				title: "Preset can’t be used",
+				detail: "This preset isn’t supported in this version.",
+				footer: "Preset can’t be used"
+			};
+		}
+		if (reason === "TRACK_LOCKED") {
+			return {
+				title: "Track locked",
+				detail: "Unlock the track and try again.",
+				footer: "Track locked"
+			};
+		}
+		if (reason === "KEYFRAMES_NOT_SUPPORTED") {
+			return {
+				title: "Can't animate that",
+				detail: "This property cannot be animated on the selected clip.",
+				footer: "Can't animate that"
+			};
+		}
+		if (reason === "KEYFRAME_CONFLICT") {
+			return {
+				title: "Existing animation in the way",
+				detail: "PickFX left the existing keyframes unchanged.",
+				footer: "Existing animation in the way"
+			};
+		}
+		if (reason === "INVALID_CLIP_DURATION") {
+			return {
+				title: "Clip is too short",
+				detail: "Choose a longer clip and try again.",
+				footer: "Clip is too short"
+			};
+		}
+		if (reason === "COMPONENT_NOT_FOUND") {
+			return {
+				title: "Parameter not found",
+				detail: "We couldn't find that property on the selected clip.",
+				footer: "Parameter not found"
+			};
+		}
 		if (reason === "MULTIPLE_CLIPS_SELECTED") {
 			return {
 				title: "Select one clip",
@@ -306,11 +430,15 @@ var CommandPaletteState = (function () {
 				footer: "Parameter not found"
 			};
 		}
-		if (reason === "VALUE_NOT_VERIFIED" || reason === "VERIFY_FAILED") {
+		if (reason === "VALUE_NOT_VERIFIED" || reason === "VERIFY_FAILED" ||
+				reason === "TARGET_NOT_LOCKED" ||
+				reason === "SAFE_EXECUTOR_UNAVAILABLE" ||
+				status === "Effect value or target could not be verified." ||
+				/EvalScript|host\.jsx/i.test(status + " " + (payload && payload.detail ? payload.detail : "") + " " + (payload && payload.error ? payload.error : ""))) {
 			return {
-				title: "Couldn't verify the change",
-				detail: "The value could not be confirmed. Try again.",
-				footer: "Couldn't verify the change"
+				title: "Couldn’t apply that value.",
+				detail: "The change could not be confirmed. Try again.",
+				footer: "Couldn’t apply that value."
 			};
 		}
 		if (containsInternalCode(reason) || containsInternalCode(status)) {
@@ -340,6 +468,8 @@ var CommandPaletteState = (function () {
 				out = out.replace(new RegExp(code, "ig"), "");
 			}
 		}
+		out = out.replace(/EvalScript error\.?\s*(host\.jsx may not be loaded\.?)?/ig, "");
+		out = out.replace(/host\.jsx/ig, "");
 		return trim(out.replace(/\s+·\s+$/g, "").replace(/\s{2,}/g, " "));
 	}
 

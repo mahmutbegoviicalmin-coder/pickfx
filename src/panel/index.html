@@ -3,7 +3,7 @@
 <head>
 	<meta charset="utf-8">
 	<title>PickFX</title>
-	<link rel="stylesheet" href="styles/panel.css?v=premium-search-20260820">
+	<link rel="stylesheet" href="styles/panel.css?v=presets-v1-20260915">
 </head>
 <body>
 	<div class="command-bar is-centered">
@@ -12,17 +12,28 @@
 				<img class="app-mark-img brand-logo" src="assets/pickfx-logo-light.png" alt="" width="28" height="28">
 				<span class="brand-name">PickFX</span>
 			</div>
-			<button id="settings-btn" class="icon-btn" type="button" title="Settings" aria-label="Settings"></button>
+			<div class="header-actions">
+				<button id="presets-btn" class="icon-btn" type="button" title="My Presets" aria-label="My Presets"></button>
+				<button id="settings-btn" class="icon-btn" type="button" title="Settings" aria-label="Settings"></button>
+			</div>
 		</div>
 
 		<div class="search-stage">
 			<div class="search-wrap">
 				<span id="search-icon" class="search-icon" aria-hidden="true"></span>
-				<input id="search-input" type="text" placeholder="Search effects or commands" autocomplete="off" spellcheck="false" autofocus>
+				<input id="search-input" type="text" placeholder="Search effects..." name="pickfxSearchQuery" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" autofocus>
 				<button id="clear-search-btn" class="kbd-chip" type="button" title="Clear">esc</button>
 			</div>
 
-			<div id="search-results" class="results"></div>
+			<div id="palette-value-stage" class="palette-value-stage" hidden>
+				<p id="palette-effect-label" class="palette-effect-label"></p>
+				<p id="palette-parameter-label" class="palette-parameter-label"></p>
+				<div class="search-wrap is-value">
+					<input id="value-input" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" aria-label="Parameter value" disabled tabindex="-1">
+				</div>
+			</div>
+
+			<div id="search-results" class="results" tabindex="-1"></div>
 		</div>
 
 		<div class="bar-footer">
@@ -33,105 +44,162 @@
 				<span class="footer-brand-meta">
 					<img class="footer-brand-logo" src="assets/pickfx-logo-light.png" alt="" width="14" height="14">
 					<span class="footer-brand-name">PickFX</span>
-					<span class="footer-sep">·</span>
-					<span id="footer-result-count" class="footer-count"></span>
 				</span>
-				<span class="footer-apply-hint">Apply <span class="keycap">↵</span></span>
+				<span class="footer-keys">
+					<span class="footer-back-hint"><span class="keycap">esc</span> Back</span>
+					<span class="footer-nav-hint"><span class="keycap">↑</span><span class="keycap">↓</span> Move</span>
+					<span class="footer-apply-hint">Apply <span class="keycap">↵</span></span>
+				</span>
 			</div>
 			<p id="index-status" class="effect-count vis-hidden" hidden aria-hidden="true"></p>
 		</div>
-	</div>
 
-	<div id="debug-panel" class="debug-panel" hidden>
-		<div class="debug-actions">
-			<button id="apply-btn" type="button">Apply Selected Effect</button>
-			<button id="refresh-btn" type="button">Refresh Effects</button>
-			<button id="ping-btn" type="button">Ping Premiere</button>
-			<button id="selection-btn" type="button">Get Selection</button>
-			<button id="discover-btn" type="button">Discover Premiere Effects</button>
-			<button id="inspect-effects-btn" type="button">Inspect Selected Effects</button>
-			<button id="inspect-clip-params-btn" type="button">Inspect clip parameters</button>
-			<button id="inspect-motion-scale-btn" type="button">Inspect Motion Scale</button>
-			<button id="test-scale-semantics-btn" type="button">Test Scale Semantics</button>
-			<button id="universal-inspect-btn" type="button">Universal inspect</button>
-			<button id="scan-numeric-candidates-btn" type="button">Scan Numeric Candidates</button>
-			<button id="inspect-color-params-btn" type="button">Inspect Color Parameters</button>
-			<button id="inspect-audio-params-btn" type="button">Inspect Audio Parameters</button>
-			<button id="inspect-enum-params-btn" type="button">Inspect Enum Parameters</button>
-			<button id="diagnose-blend-mode-btn" type="button">Diagnose Blend Mode</button>
-			<button id="inspect-saturation-matches-btn" type="button">Inspect Saturation Matches</button>
-			<button id="inspect-lumetri-identity-btn" type="button" title="DEBUG only. Read-only dump of every Lumetri Color instance on the selected clip. Does not write, does not use QE, does not choose first/last/index.">Inspect Lumetri Instance Identity</button>
-			<button id="find-opacity-btn" type="button">Find Opacity</button>
-			<button id="find-typed-btn" type="button">Find typed candidates</button>
+		<div id="presets-view" class="presets-view" hidden>
+			<div class="presets-header">
+				<button id="presets-back-btn" class="icon-btn" type="button" title="Back" aria-label="Back"></button>
+				<h2 id="presets-title">My Presets</h2>
+				<button id="presets-capture-btn" class="icon-btn" type="button" title="Capture Preset" aria-label="Capture Preset"></button>
+			</div>
+			<div id="presets-body" class="presets-body"></div>
 		</div>
-		<div class="debug-inspect">
-			<p class="debug-inspect-title">DEBUG</p>
-			<label class="debug-inspect-field">
-				<span>Effect / Component</span>
-				<input id="inspect-effect-input" type="text" spellcheck="false" placeholder="Lumetri Color" value="">
-			</label>
-			<label class="debug-inspect-field">
-				<span>Component MatchName</span>
-				<input id="inspect-component-match-input" type="text" spellcheck="false" placeholder="AE.ADBE Lumetri" value="">
-			</label>
-			<label class="debug-inspect-field">
-				<span>Parameter</span>
-				<input id="inspect-parameter-input" type="text" spellcheck="false" placeholder="Temperature" value="">
-			</label>
-			<label class="debug-inspect-field">
-				<span>Parameter MatchName</span>
-				<input id="inspect-parameter-match-input" type="text" spellcheck="false" placeholder="(empty is valid)" value="">
-			</label>
-			<div class="debug-inspect-actions">
-				<button id="inspect-param-btn" type="button">Inspect</button>
-				<button id="inspect-all-params-btn" type="button">Inspect all parameters</button>
-				<button id="inspect-boolean-candidate-btn" type="button">Inspect boolean candidate</button>
-				<button id="test-boolean-write-btn" type="button">Test Boolean Write</button>
-				<button id="test-motion-write-btn" type="button">Test Motion Write</button>
-				<button id="test-parameter-write-btn" type="button">Test Parameter Write</button>
-				<button id="test-numeric-parameter-write-btn" type="button">Test Numeric Parameter Write</button>
-				<button id="test-color-parameter-write-btn" type="button" data-pickfx-button="color-parameter-write-test" data-pickfx-handler="invokeColorParameterWriteTest" data-wiring-version="color-write-20260819" title="Typed Parameter tests that one identity. Empty Parameter tests every unambiguous Lumetri numeric candidate. Ambiguous names such as Saturation are rejected." onclick="window.__pickfxColorWriteButtonClicked=true; if (window.__pickfxInvokeColorParameterWriteTest) { window.__pickfxInvokeColorParameterWriteTest(event); } return false;">Test Color Parameter Write</button>
-				<button id="test-audio-parameter-write-btn" type="button" data-pickfx-button="audio-parameter-write-test" data-pickfx-handler="invokeAudioParameterWriteTest" title="Typed Parameter tests that one identity. Empty Parameter tests every unambiguous numeric Audio candidate. Identities come from Inspect Audio Parameters. No production promotion." onclick="window.__pickfxAudioWriteButtonClicked=true; if (window.__pickfxInvokeAudioParameterWriteTest) { window.__pickfxInvokeAudioParameterWriteTest(event); } return false;">Test Audio Parameter Write</button>
-				<button id="test-enum-parameter-write-btn" type="button" data-pickfx-button="enum-parameter-write-test" data-pickfx-handler="invokeEnumParameterWriteTest" title="DEBUG only. Typed Parameter tests that one enum identity. Empty Parameter tests unambiguous enum candidates plus unique Blend Mode. Never falls back to numeric ParameterWriteTest. No production promotion." onclick="window.__pickfxEnumWriteButtonClicked=true; if (window.__pickfxInvokeEnumParameterWriteTest) { window.__pickfxInvokeEnumParameterWriteTest(event); } return false;">Test Enum Parameter Write</button>
-				<button id="diagnose-audio-level-setvalue-btn" type="button" data-pickfx-button="audio-level-setvalue-diagnose" data-pickfx-handler="invokeAudioLevelSetValueDiagnose" title="DEBUG only. Same Audio Level write-test path. Captures setValue throw/return/read-back, then restores. Does not use QE or setValueAtKey. Does not promote Level." onclick="window.__pickfxAudioLevelDiagnoseButtonClicked=true; if (window.__pickfxInvokeAudioLevelSetValueDiagnose) { window.__pickfxInvokeAudioLevelSetValueDiagnose(event); } return false;">Diagnose Audio Level setValue</button>
-				<button id="probe-audio-level-capability-btn" type="button" data-pickfx-button="audio-level-capability-probe" data-pickfx-handler="invokeAudioLevelCapabilityProbe" title="DEBUG only. Tests setValueAtKey, addKey+setValueAtKey, and setTimeVarying one at a time on unique Audio Level, then restores. Does not promote. Does not use QE." onclick="window.__pickfxAudioLevelCapabilityButtonClicked=true; if (window.__pickfxInvokeAudioLevelCapabilityProbe) { window.__pickfxInvokeAudioLevelCapabilityProbe(event); } return false;">Probe Audio Level Capability</button>
-				<button id="copy-inspect-json-btn" type="button">Copy JSON</button>
+
+		<div id="product-signin" class="product-screen" hidden>
+			<div class="product-card">
+				<p class="product-kicker">PickFX</p>
+				<h1>Sign in to continue</h1>
+				<p class="product-copy">Open PickFX in your browser to sign in to this installation.</p>
+				<button id="signin-panel-btn" class="product-btn" type="button">Sign in</button>
 			</div>
 		</div>
-		<pre id="result">Debug JSON</pre>
+
+		<div id="product-authorize" class="product-screen" hidden>
+			<div class="product-card">
+				<p class="product-kicker">PickFX</p>
+				<h1>Authorize this panel</h1>
+				<p class="product-copy">Open PickFX in your browser to authorize this installation.</p>
+				<p id="authorize-code" class="product-code">————</p>
+				<button id="authorize-panel-btn" class="product-btn" type="button">Authorize Panel</button>
+			</div>
+		</div>
+
+		<div id="product-authorized" class="product-screen" hidden>
+			<div class="product-card">
+				<p class="product-kicker">PickFX</p>
+				<h1>Panel authorized</h1>
+				<p class="product-copy">Returning to the Terminal.</p>
+			</div>
+		</div>
+
+		<div id="product-upgrade" class="product-screen" hidden>
+			<div class="product-card">
+				<p class="product-kicker">PickFX</p>
+				<h1>PickFX access is inactive.</h1>
+				<p class="product-copy">Choose a plan to continue.</p>
+				<button id="upgrade-plan-btn" class="product-btn" type="button">Choose a plan</button>
+			</div>
+		</div>
+
+		<div id="product-settings" class="product-settings" hidden>
+			<div class="settings-sheet">
+				<div class="settings-header">
+					<h2>Settings</h2>
+					<button id="settings-close-btn" class="icon-btn" type="button" title="Close" aria-label="Close">✕</button>
+				</div>
+				<section class="settings-section">
+					<h3>Account</h3>
+					<p id="settings-account-email" class="settings-value">Not signed in</p>
+				</section>
+				<section class="settings-section">
+					<h3>Plan</h3>
+					<p id="settings-plan-value" class="settings-value">None</p>
+				</section>
+				<section class="settings-section">
+					<h3>Status</h3>
+					<p id="settings-status-value" class="settings-value">Signed out</p>
+				</section>
+				<section class="settings-section">
+					<h3>Authorization</h3>
+					<p id="settings-auth-note" class="settings-copy">Sign in with an active PickFX plan.</p>
+					<button id="settings-auth-action" class="product-btn product-btn-secondary" type="button" hidden>Authorize Panel</button>
+				</section>
+				<section id="settings-shortcut-section" class="settings-section" hidden>
+					<h3>Keyboard shortcut</h3>
+					<p class="settings-copy">Launcher</p>
+					<button id="settings-shortcut-record" class="shortcut-record" type="button" aria-label="Record keyboard shortcut">
+						<span id="settings-shortcut-value" class="settings-value">⇧ P</span>
+					</button>
+					<p id="settings-shortcut-hint" class="settings-copy">Press a key combination to change</p>
+					<p id="settings-shortcut-error" class="settings-copy is-error" hidden></p>
+					<div class="settings-shortcut-actions">
+						<button id="settings-shortcut-clear" class="product-btn product-btn-secondary" type="button">Clear</button>
+						<button id="settings-shortcut-reset" class="product-btn product-btn-secondary" type="button">Reset</button>
+					</div>
+				</section>
+				<section class="settings-section">
+					<h3>About</h3>
+					<p id="settings-about-title" class="settings-value">PickFX 2.5</p>
+					<p id="settings-about-copy" class="settings-copy">Fast effect control for Premiere Pro.</p>
+				</section>
+				<button id="settings-signout-btn" class="product-btn product-btn-secondary" type="button">Sign out</button>
+			</div>
+		</div>
 	</div>
 
 	<script src="lib/CSInterface.js"></script>
+	<script src="js/CepKeyInterest.js?v=kb-runtime-20260904-v7"></script>
 	<script src="../core/EffectRegistry.js"></script>
 	<script src="../core/EffectSearch.js"></script>
+	<script src="../core/ActionRegistry.js?v=actions-v1-20260915"></script>
 	<script src="../core/EffectExecutor.js"></script>
+	<script src="../core/TerminalRegistryAdapter.js?v=phase3-terminal-20260822"></script>
+	<script src="../core/TerminalCommandResolver.js?v=phase8-production-v2-20260823"></script>
+	<script src="../core/TerminalCommandDispatcher.js?v=phase4-validation-20260822"></script>
+	<script src="../core/TerminalProductionRegistry.js?v=lumetri-browse-20260824"></script>
+	<script src="../core/TerminalProductionExecutor.js?v=clip-apply-confirm-20260907"></script>
+	<script src="../core/TerminalEffectDiscovery.js?v=phase9-customer-terminal-20260823"></script>
+	<script src="../core/TerminalCapabilityRegistry.js?v=phase6-capabilities-20260822"></script>
+	<script src="../core/TerminalClipCapability.js?v=phase6-capabilities-20260822"></script>
+	<script src="../core/TerminalMotionCapability.js?v=phase6-capabilities-20260822"></script>
+	<script src="../core/TerminalTransitionCapability.js?v=phase6-capabilities-20260822"></script>
 	<script src="../core/CommandParser.js"></script>
 	<script src="../core/LumetriPicker.js?v=lumetri-param-picker-20260819"></script>
-	<script src="../core/ConfirmedParameterWrites.js?v=lumetri-param-picker-20260819"></script>
+	<script src="../core/ConfirmedParameterWrites.js?v=lumetri-browse-20260824"></script>
 	<script src="../core/CommandPreview.js?v=mvp-ui-20260820a"></script>
 	<script src="../core/NumericParameterPicker.js"></script>
 	<script src="../core/ParameterValueParser.js"></script>
 	<script src="../core/ParameterValueResolver.js"></script>
-	<script src="../core/ParameterEngine.js"></script>
+	<script src="../core/ParameterEngine.js?v=clip-apply-confirm-20260907"></script>
+	<script src="../core/ParameterReadBack.js?v=apply-timeout-20260907"></script>
 	<script src="../core/PointValue.js"></script>
 	<script src="../core/ParameterValueType.js"></script>
 	<script src="../core/SpeedOperation.js"></script>
 	<script src="../core/TypedCandidateClassifier.js"></script>
-	<script src="../core/BooleanCandidateInspect.js"></script>
-	<script src="../core/BooleanWriteTest.js"></script>
-	<script src="../core/MotionWriteTest.js"></script>
-	<script src="../core/BatchNumericExecutor.js?v=lumetri-picker-20260819"></script>
-	<script src="../core/CommandExecutor.js?v=lumetri-picker-20260819"></script>
+	<script src="../core/CommandExecutor.js?v=clip-apply-confirm-20260907"></script>
 	<script src="../core/ParameterDiscovery.js"></script>
-	<script src="../core/ColorWriteTestWiring.js?v=color-all-groups-20260819"></script>
-	<script src="../core/AudioWriteTestWiring.js?v=audio-capability-20260819"></script>
-	<script src="../core/EnumWriteTestWiring.js?v=enum-load-20260819"></script>
-	<script src="../premiere/PremiereBridge.js?v=lumetri-picker-20260819"></script>
-	<script src="ui/EffectIconResolver.js?v=premium-ui-20260820"></script>
-	<script src="ui/EffectIcons.js?v=neutral-ui-20260820"></script>
-	<script src="ui/CommandPaletteState.js?v=mvp-ui-20260820a"></script>
-	<script src="ui/RecentStore.js"></script>
+	<script src="../core/PanelEntitlement.js?v=lifetime-hotkey-20260907"></script>
+	<script src="../premiere/PremiereBridge.js?v=presets-v1-20260915"></script>
+	<script src="../core/ActionExecutor.js?v=actions-v1-20260915"></script>
+	<script src="../core/PresetSchema.js?v=presets-v1-20260915"></script>
+	<script src="../core/PresetSearch.js?v=presets-v1-20260915"></script>
+	<script src="../core/PresetCapture.js?v=presets-v1-20260915"></script>
+	<script src="../core/PresetExecutor.js?v=presets-v1-20260915"></script>
+	<script src="ui/EffectIconResolver.js?v=meaningful-icons-20260907"></script>
+	<script src="ui/EffectCatalogBrowse.js?v=catalog-browse-20260907"></script>
+	<script src="ui/ClipControlCatalog.js?v=clip-controls-20260907"></script>
+	<script src="ui/EffectIcons.js?v=presets-v1-20260915"></script>
+	<script src="ui/CommandPaletteState.js?v=presets-v1-20260915"></script>
+	<script src="ui/PaletteFlow.js?v=effect-search-only-20260904"></script>
+	<script src="ui/PaletteKeyboard.js?v=kb-arrows-20260907"></script>
+	<script src="ui/EffectIndexState.js?v=kb-runtime-20260904"></script>
+	<script src="ui/ShortcutStore.js?v=cep-kvk-20260904"></script>
+	<script src="ui/TerminalKeyboardShortcut.js?v=cep-kvk-20260904"></script>
+	<script src="ui/CustomerSettingsCopy.js?v=lifetime-hotkey-20260907"></script>
+	<script src="ui/RecentStore.js?v=search-fix-20260904"></script>
 	<script src="ui/FavoritesStore.js"></script>
-	<script src="js/panel.js?v=fix-success-fn-20260820"></script>
+	<script src="ui/PresetStore.js?v=presets-v1-20260915"></script>
+	<script src="js/GlobalLauncher.js?v=panel-only-shortcut-20260907"></script>
+	<script src="js/EntitlementClient.js?v=phase12c-invisible-20260823"></script>
+	<script src="js/product.js?v=cep-kvk-20260904"></script>
+	<script src="js/panel.js?v=presets-v1-20260915"></script>
 </body>
 </html>

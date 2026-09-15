@@ -1,5 +1,22 @@
 /*global app, qe, $ */
 
+try {
+	$._pickfxRuntimeDiagnostic = {
+		runtimeMarker: "2026-08-22-RUNTIME-VERIFY-01",
+		hostBootstrapPath: String($.fileName || ""),
+		hostBootstrapExists: !!($.fileName && new File($.fileName).exists),
+		hostBootstrapExecuted: true
+	};
+} catch (runtimeDiagnosticError) {
+	$._pickfxRuntimeDiagnostic = {
+		runtimeMarker: "2026-08-22-RUNTIME-VERIFY-01",
+		hostBootstrapPath: "",
+		hostBootstrapExists: false,
+		hostBootstrapExecuted: true,
+		hostBootstrapDiagnosticError: String(runtimeDiagnosticError)
+	};
+}
+
 // QE DOM adapter. Official Premiere DOM cannot add effects.
 // Isolated here so panel JS never talks to QE directly.
 $._pickfxQE = {
@@ -1605,7 +1622,9 @@ $._pickfx = {
 				return JSON.stringify({
 					ok: false,
 					names: [],
-					error: "Could not read length from getVideoEffectList()."
+					error: "Could not read length from getVideoEffectList().",
+					reason: "EFFECT_INDEX_UNAVAILABLE",
+					retryable: true
 				});
 			}
 
@@ -1623,7 +1642,9 @@ $._pickfx = {
 			return JSON.stringify({
 				ok: false,
 				names: [],
-				error: String(e)
+				error: String(e),
+				reason: "EFFECT_INDEX_UNAVAILABLE",
+				retryable: true
 			});
 		}
 	},
@@ -2475,6 +2496,273 @@ $._pickfx = {
 		return copy;
 	},
 
+	compactTerminalWriteResult: function (result) {
+		var clips = [];
+		var i;
+		var clip;
+		if (!result) {
+			return {
+				ok: false,
+				reason: "WRITE_FAILED",
+				detail: "Empty parameter result.",
+				verified: false,
+				targetLocked: false
+			};
+		}
+		if (result.clips) {
+			for (i = 0; i < result.clips.length; i++) {
+				clip = result.clips[i] || {};
+				clips.push({
+					clip: clip.clip,
+					ok: clip.ok === true,
+					verified: clip.verified === true,
+					effectApplied: clip.effectApplied === true,
+					effectAlreadyExisted: clip.effectAlreadyExisted === true,
+					requestedValue: clip.requestedValue,
+					actualValue: clip.actualValue,
+					reason: clip.reason,
+					detail: clip.detail
+				});
+			}
+		}
+		return {
+			ok: result.ok === true,
+			verified: result.verified === true,
+			targetLocked: result.targetLocked === true,
+			command: true,
+			productionTerminal: true,
+			confirmed: result.confirmed === true,
+			effect: result.effect || "",
+			parameter: result.parameter || "",
+			value: result.value,
+			requestedValue: result.requestedValue,
+			actualValue: result.actualValue,
+			readBack: result.readBack,
+			reason: result.reason,
+			detail: result.detail,
+			selectedCount: result.selectedCount,
+			successfulCount: result.successfulCount,
+			failedCount: result.failedCount,
+			verifiedCount: result.verifiedCount,
+			clips: clips
+		};
+	},
+
+	terminalParameterAliases: function (effectName, parameterName) {
+		var names = [String(parameterName || "")];
+		if (String(effectName) === "Gaussian Blur" && String(parameterName) === "Amount") {
+			names.push("Blurriness");
+		}
+		return names;
+	},
+
+	writeTerminalParameterOnTrackItem: function (item, effectName, parameterName, value, parameterIndex, effectMatchName) {
+		var written;
+		var aliases;
+		var i;
+		if ($._pickfx.isLumetriEffect(effectName, effectMatchName)) {
+			return $._pickfx.writeVerifiedLumetriParameter(
+				item,
+				parameterName,
+				value,
+				parameterIndex
+			);
+		}
+		written = $._pickfxParameterWriter.set(
+			item,
+			effectName,
+			parameterName,
+			value
+		);
+		if (written && written.ok) {
+			return written;
+		}
+		aliases = $._pickfx.terminalParameterAliases(effectName, parameterName);
+		for (i = 1; i < aliases.length; i++) {
+			if (!written || written.reason !== "PARAMETER_NOT_FOUND") {
+				break;
+			}
+			written = $._pickfxParameterWriter.set(
+				item,
+				effectName,
+				aliases[i],
+				value
+			);
+			if (written && written.ok) {
+				return written;
+			}
+		}
+		return written;
+	},
+
+	readClipParameterValue: function (parameterName) {
+		var selected;
+		var resolved;
+		var value;
+		try {
+			if (typeof $._pickfxParameterResolver === "undefined") {
+				return JSON.stringify({
+					ok: false,
+					reason: "SAFE_EXECUTOR_UNAVAILABLE",
+					targetLocked: false
+				});
+			}
+			selected = $._pickfx.firstSelectedVideoTrackItem();
+			if (!selected.ok) {
+				return JSON.stringify({
+					ok: false,
+					reason: selected.reason || "NO_VIDEO_SELECTION",
+					targetLocked: false
+				});
+			}
+			if (typeof $._pickfxParameterResolver.resolveClipParameter === "function") {
+				resolved = $._pickfxParameterResolver.resolveClipParameter(
+					selected.trackItem,
+					parameterName
+				);
+			}
+			if ((!resolved || !resolved.ok || !resolved._param) &&
+					typeof $._pickfxParameterResolver.resolveMotionParameter === "function") {
+				resolved = $._pickfxParameterResolver.resolveMotionParameter(
+					selected.trackItem,
+					parameterName
+				);
+			}
+			if (!resolved || !resolved.ok || !resolved._param) {
+				return JSON.stringify({
+					ok: false,
+					reason: (resolved && resolved.reason) || "PARAMETER_NOT_FOUND",
+					targetLocked: true
+				});
+			}
+			try {
+				value = resolved._param.getValue();
+			} catch (readErr) {
+				return JSON.stringify({
+					ok: false,
+					reason: "WRITE_FAILED",
+					detail: String(readErr),
+					targetLocked: true
+				});
+			}
+			return JSON.stringify({
+				ok: true,
+				value: value,
+				effect: resolved.effect ? resolved.effect.displayName : "",
+				parameter: resolved.parameter ? resolved.parameter.displayName : String(parameterName || ""),
+				targetLocked: true
+			});
+		} catch (e) {
+			return JSON.stringify({
+				ok: false,
+				reason: "WRITE_FAILED",
+				detail: String(e),
+				targetLocked: false
+			});
+		}
+	},
+
+	readTerminalParameterValue: function (effectName, parameterName) {
+		var selected;
+		var resolved;
+		try {
+			if (typeof $._pickfxParameterResolver === "undefined") {
+				return JSON.stringify({
+					ok: false,
+					reason: "SAFE_EXECUTOR_UNAVAILABLE",
+					targetLocked: false
+				});
+			}
+			selected = $._pickfx.firstSelectedVideoTrackItem();
+			if (!selected.ok) {
+				return JSON.stringify({
+					ok: false,
+					reason: selected.reason || "NO_VIDEO_SELECTION",
+					targetLocked: false
+				});
+			}
+			resolved = $._pickfxParameterResolver.resolve(
+				selected.trackItem,
+				effectName,
+				parameterName
+			);
+			if (!resolved || !resolved.ok || !resolved.parameter) {
+				return JSON.stringify({
+					ok: false,
+					reason: (resolved && resolved.reason) || "PARAMETER_NOT_FOUND",
+					targetLocked: true
+				});
+			}
+			return JSON.stringify({
+				ok: true,
+				value: resolved.parameter.value,
+				effect: resolved.effect ? resolved.effect.displayName : String(effectName || ""),
+				parameter: resolved.parameter.displayName,
+				targetLocked: true
+			});
+		} catch (e) {
+			return JSON.stringify({
+				ok: false,
+				reason: "WRITE_FAILED",
+				detail: String(e),
+				targetLocked: false
+			});
+		}
+	},
+
+	confirmParameterOnTrackItem: function (trackItem, effectName, parameterName, value) {
+		var resolved;
+		var actual;
+		var verified;
+		resolved = $._pickfxParameterResolver.resolve(trackItem, effectName, parameterName);
+		if (!resolved || !resolved.ok || !resolved._param) {
+			return {
+				ok: false,
+				verified: false,
+				reason: (resolved && resolved.reason) || "PARAMETER_NOT_FOUND",
+				detail: (resolved && resolved.detail) || "Parameter not found.",
+				effect: String(effectName || ""),
+				parameter: String(parameterName || "")
+			};
+		}
+		try {
+			actual = resolved._param.getValue();
+		} catch (readErr) {
+			return {
+				ok: false,
+				verified: false,
+				reason: "VALUE_NOT_VERIFIED",
+				detail: "Value could not be verified.",
+				effect: resolved.effect.displayName,
+				parameter: resolved.parameter.displayName,
+				requestedValue: value
+			};
+		}
+		verified = $._pickfxParameterWriter.verifyWrite("number", value, actual, null);
+		if (!verified || !verified.ok) {
+			return {
+				ok: false,
+				verified: false,
+				reason: "VALUE_NOT_VERIFIED",
+				detail: "Value could not be verified.",
+				effect: resolved.effect.displayName,
+				parameter: resolved.parameter.displayName,
+				requestedValue: value,
+				actualValue: actual,
+				readBack: actual
+			};
+		}
+		return {
+			ok: true,
+			verified: true,
+			effect: resolved.effect.displayName,
+			parameter: resolved.parameter.displayName,
+			requestedValue: value,
+			actualValue: actual,
+			readBack: actual
+		};
+	},
+
 	resolveParameter: function (effectName, parameterName) {
 		var selected;
 		var resolved;
@@ -2529,6 +2817,89 @@ $._pickfx = {
 		return !!(listed && listed.ok);
 	},
 
+	countEffectInstances: function (trackItem, effectName, effectMatchName) {
+		var components;
+		var countInfo;
+		var indexBase;
+		var wantedName = String(effectName || "").toLowerCase();
+		var wantedMatch = String(effectMatchName || "");
+		var component;
+		var displayName;
+		var matchName;
+		var count = 0;
+		var i;
+		if (!trackItem || typeof $._pickfxParameterResolver === "undefined") {
+			return 0;
+		}
+		try {
+			components = trackItem.components;
+		} catch (ignoreComponents) {
+			return 0;
+		}
+		countInfo = $._pickfxParameterResolver.collectionCount(components);
+		indexBase = $._pickfxParameterResolver.collectionIndexBase(
+			components,
+			countInfo.count
+		);
+		for (i = 0; i < countInfo.count; i++) {
+			component = $._pickfxParameterResolver.collectionItem(
+				components,
+				i,
+				indexBase
+			);
+			displayName = $._pickfxParameterResolver.readString(
+				component,
+				"displayName"
+			);
+			matchName = $._pickfxParameterResolver.readString(
+				component,
+				"matchName"
+			);
+			if ((wantedMatch && matchName === wantedMatch) ||
+					(wantedName && displayName &&
+						String(displayName).toLowerCase() === wantedName)) {
+				count += 1;
+			}
+		}
+		return count;
+	},
+
+	isLumetriEffect: function (effectName, effectMatchName) {
+		return String(effectMatchName || "") === "AE.ADBE Lumetri" ||
+			String(effectName || "") === "Lumetri Color";
+	},
+
+	writeVerifiedLumetriParameter: function (trackItem, parameterName, value, parameterIndex) {
+		if (typeof $._pickfxConfirmedParameterWrites === "undefined" ||
+				typeof $._pickfxConfirmedParameterWrites.write !== "function") {
+			return {
+				ok: false,
+				verified: false,
+				reason: "SAFE_EXECUTOR_UNAVAILABLE",
+				detail: "Confirmed Lumetri writer is not loaded.",
+				usedQE: false
+			};
+		}
+		if (typeof $._pickfxConfirmedParameterWrites.writeLumetriParameter !== "function") {
+			return {
+				ok: false,
+				verified: false,
+				reason: "SAFE_EXECUTOR_UNAVAILABLE",
+				detail: "Confirmed Lumetri writer is not loaded.",
+				usedQE: false
+			};
+		}
+		return $._pickfxConfirmedParameterWrites.writeLumetriParameter(
+			trackItem,
+			parameterName,
+			{
+				value: value,
+				numbers: typeof value === "number" && isFinite(value) ? [value] : [],
+				parameterIndex: typeof parameterIndex === "number" ? parameterIndex : undefined
+			}
+		);
+	},
+
 	qeApplyContext: function (effectName) {
 		var effect;
 		var qeSequence;
@@ -2553,10 +2924,25 @@ $._pickfx = {
 		return { ok: true, effect: effect, qeSequence: qeSequence };
 	},
 
-	ensureEffectOnTrackItem: function (trackItem, effectName, qeContext) {
+	effectPresentOnTrackItem: function (trackItem, effectName, effectMatchName) {
+		if ($._pickfx.isLumetriEffect(effectName, effectMatchName)) {
+			return $._pickfx.countEffectInstances(
+				trackItem,
+				effectName,
+				effectMatchName || "AE.ADBE Lumetri"
+			) > 0;
+		}
+		return $._pickfx.effectExistsOnTrackItem(trackItem, effectName);
+	},
+
+	ensureEffectOnTrackItem: function (trackItem, effectName, qeContext, effectMatchName) {
 		var existed;
 		var appliedResult;
-		existed = $._pickfx.effectExistsOnTrackItem(trackItem, effectName);
+		existed = $._pickfx.effectPresentOnTrackItem(
+			trackItem,
+			effectName,
+			effectMatchName
+		);
 		if (existed) {
 			return { ok: true, existed: true, applied: false };
 		}
@@ -2579,7 +2965,7 @@ $._pickfx = {
 				detail: (appliedResult && appliedResult.error && (appliedResult.error.detail || appliedResult.error.reason)) || "Could not apply effect."
 			};
 		}
-		if (!$._pickfx.effectExistsOnTrackItem(trackItem, effectName)) {
+		if (!$._pickfx.effectPresentOnTrackItem(trackItem, effectName, effectMatchName)) {
 			return {
 				ok: false,
 				existed: false,
@@ -2834,6 +3220,392 @@ $._pickfx = {
 		}
 	},
 
+	setVerifiedTerminalEffectParameter: function (
+		effectName,
+		effectMatchName,
+		parameterName,
+		value,
+		parameterIndex
+	) {
+		var selected;
+		var executor;
+		var qeContext = null;
+		var clipResults = [];
+		var spec;
+		var i;
+		var item;
+		var instanceCount;
+		var ensured;
+		var written;
+		var batch;
+		var clipName;
+		try {
+			if (typeof $._pickfxParameterWriter === "undefined" ||
+					typeof $._pickfxBatchNumericExecutor === "undefined") {
+				return JSON.stringify({
+					ok: false,
+					reason: "SAFE_EXECUTOR_UNAVAILABLE",
+					detail: "Verified terminal writer modules are not loaded.",
+					verified: false,
+					targetLocked: false
+				});
+			}
+			selected = $._pickfx.selectedVideoTrackItems();
+			if (!selected.ok) {
+				return JSON.stringify({
+					ok: false,
+					reason: selected.reason || "NO_VIDEO_SELECTION",
+					detail: selected.detail || "Select a video clip first.",
+					verified: false,
+					targetLocked: false,
+					debugSelection: selected.debug
+				});
+			}
+			executor = $._pickfxBatchNumericExecutor;
+			spec = {
+				effect: String(effectName || ""),
+				parameter: String(parameterName || ""),
+				requestedValue: value
+			};
+			for (i = 0; i < selected.items.length; i++) {
+				item = selected.items[i];
+				clipName = $._pickfx.clipDisplayName(item);
+				instanceCount = $._pickfx.countEffectInstances(
+					item,
+					effectName,
+					effectMatchName
+				);
+				if (instanceCount > 1) {
+					clipResults.push(executor.failClip(
+						{ name: clipName },
+						"AMBIGUOUS_EFFECT_INSTANCE",
+						"Multiple matching effect instances exist on the locked clip.",
+						{
+							existed: true,
+							applied: false,
+							requestedValue: value
+						}
+					));
+					continue;
+				}
+				ensured = { ok: true, existed: instanceCount === 1, applied: false };
+				if (instanceCount === 0) {
+					if (!qeContext) {
+						qeContext = $._pickfx.qeApplyContext(effectName);
+					}
+					ensured = $._pickfx.ensureEffectOnTrackItem(
+						item,
+						effectName,
+						qeContext,
+						effectMatchName
+					);
+				}
+				if (!ensured.ok) {
+					clipResults.push(executor.failClip(
+						{ name: clipName },
+						ensured.reason || "EFFECT_NOT_FOUND",
+						ensured.detail || "Could not apply effect.",
+						{
+							existed: !!ensured.existed,
+							applied: !!ensured.applied,
+							requestedValue: value
+						}
+					));
+					continue;
+				}
+				instanceCount = $._pickfx.countEffectInstances(
+					item,
+					effectName,
+					effectMatchName
+				);
+				if (instanceCount !== 1) {
+					clipResults.push(executor.failClip(
+						{ name: clipName },
+						instanceCount > 1
+							? "AMBIGUOUS_EFFECT_INSTANCE"
+							: "EFFECT_NOT_FOUND",
+						"Exactly one matching effect instance is required.",
+						{
+							existed: !!ensured.existed,
+							applied: !!ensured.applied,
+							requestedValue: value
+						}
+					));
+					continue;
+				}
+				written = $._pickfx.writeTerminalParameterOnTrackItem(
+					item,
+					effectName,
+					parameterName,
+					value,
+					parameterIndex,
+					effectMatchName
+				);
+				clipResults.push(executor.fromWriterResult(
+					written,
+					{ name: clipName },
+					{
+						existed: !!ensured.existed,
+						applied: !!ensured.applied,
+						requestedValue: value
+					}
+				));
+			}
+			batch = executor.summarize(spec, clipResults);
+			batch.targetLocked = true;
+			batch.productionTerminal = true;
+			return JSON.stringify($._pickfx.compactTerminalWriteResult(batch));
+		} catch (e) {
+			return JSON.stringify({
+				ok: false,
+				reason: "WRITE_FAILED",
+				detail: String(e),
+				verified: false,
+				targetLocked: false
+			});
+		}
+	},
+
+	confirmVerifiedTerminalEffectParameter: function (
+		effectName,
+		effectMatchName,
+		parameterName,
+		value
+	) {
+		var selected;
+		var executor;
+		var clipResults = [];
+		var spec;
+		var i;
+		var n;
+		var item;
+		var written;
+		var lastFail;
+		var aliases;
+		var batch;
+		var clipName;
+		try {
+			if (typeof $._pickfxParameterWriter === "undefined" ||
+					typeof $._pickfxParameterResolver === "undefined" ||
+					typeof $._pickfxBatchNumericExecutor === "undefined") {
+				return JSON.stringify({
+					ok: false,
+					reason: "SAFE_EXECUTOR_UNAVAILABLE",
+					detail: "Verified terminal writer modules are not loaded.",
+					verified: false,
+					targetLocked: false
+				});
+			}
+			selected = $._pickfx.selectedVideoTrackItems();
+			if (!selected.ok) {
+				return JSON.stringify({
+					ok: false,
+					reason: selected.reason || "NO_VIDEO_SELECTION",
+					detail: selected.detail || "Select a video clip first.",
+					verified: false,
+					targetLocked: false
+				});
+			}
+			executor = $._pickfxBatchNumericExecutor;
+			spec = {
+				effect: String(effectName || ""),
+				parameter: String(parameterName || ""),
+				requestedValue: value
+			};
+			aliases = $._pickfx.terminalParameterAliases(effectName, parameterName);
+			for (i = 0; i < selected.items.length; i++) {
+				item = selected.items[i];
+				clipName = $._pickfx.clipDisplayName(item);
+				written = null;
+				lastFail = null;
+				for (n = 0; n < aliases.length; n++) {
+					written = $._pickfx.confirmParameterOnTrackItem(
+						item,
+						effectName,
+						aliases[n],
+						value
+					);
+					if (written && written.ok && written.verified) {
+						break;
+					}
+					lastFail = written;
+				}
+				clipResults.push(executor.fromWriterResult(
+					(written && written.ok) ? written : (lastFail || written),
+					{ name: clipName },
+					{
+						existed: true,
+						applied: false,
+						requestedValue: value
+					}
+				));
+			}
+			batch = executor.summarize(spec, clipResults);
+			batch.targetLocked = true;
+			batch.productionTerminal = true;
+			batch.confirmed = true;
+			return JSON.stringify($._pickfx.compactTerminalWriteResult(batch));
+		} catch (e) {
+			return JSON.stringify({
+				ok: false,
+				reason: "WRITE_FAILED",
+				detail: String(e),
+				verified: false,
+				targetLocked: false
+			});
+		}
+	},
+
+	ensureVerifiedTerminalEffect: function (effectName, effectMatchName) {
+		var selected;
+		var executor;
+		var qeContext = null;
+		var clipResults = [];
+		var spec;
+		var i;
+		var item;
+		var instanceCount;
+		var ensured;
+		var batch;
+		var clipName;
+		var wantedMatch = String(effectMatchName || "");
+		try {
+			if (typeof $._pickfxBatchNumericExecutor === "undefined") {
+				return JSON.stringify({
+					ok: false,
+					reason: "SAFE_EXECUTOR_UNAVAILABLE",
+					detail: "Verified terminal writer modules are not loaded.",
+					verified: false,
+					targetLocked: false
+				});
+			}
+			selected = $._pickfx.selectedVideoTrackItems();
+			if (!selected.ok) {
+				return JSON.stringify({
+					ok: false,
+					reason: selected.reason || "NO_VIDEO_SELECTION",
+					detail: selected.detail || "Select a video clip first.",
+					verified: false,
+					targetLocked: false,
+					debugSelection: selected.debug
+				});
+			}
+			executor = $._pickfxBatchNumericExecutor;
+			spec = {
+				effect: String(effectName || ""),
+				parameter: "",
+				requestedValue: null
+			};
+			for (i = 0; i < selected.items.length; i++) {
+				item = selected.items[i];
+				clipName = $._pickfx.clipDisplayName(item);
+				instanceCount = $._pickfx.countEffectInstances(
+					item,
+					effectName,
+					effectMatchName
+				);
+				if (instanceCount > 1) {
+					clipResults.push(executor.failClip(
+						{ name: clipName },
+						"AMBIGUOUS_EFFECT_INSTANCE",
+						"Multiple matching effect instances exist on the locked clip.",
+						{
+							existed: true,
+							applied: false
+						}
+					));
+					continue;
+				}
+				ensured = { ok: true, existed: instanceCount === 1, applied: false };
+				if (instanceCount === 0) {
+					if (!qeContext) {
+						qeContext = $._pickfx.qeApplyContext(effectName);
+					}
+					ensured = $._pickfx.ensureEffectOnTrackItem(
+						item,
+						effectName,
+						qeContext,
+						effectMatchName
+					);
+				}
+				if (!ensured.ok) {
+					clipResults.push(executor.failClip(
+						{ name: clipName },
+						ensured.reason || "EFFECT_NOT_FOUND",
+						ensured.detail || "Could not apply effect.",
+						{
+							existed: !!ensured.existed,
+							applied: !!ensured.applied
+						}
+					));
+					continue;
+				}
+				instanceCount = $._pickfx.countEffectInstances(
+					item,
+					effectName,
+					effectMatchName
+				);
+				if (instanceCount !== 1) {
+					clipResults.push(executor.failClip(
+						{ name: clipName },
+						instanceCount > 1
+							? "AMBIGUOUS_EFFECT_INSTANCE"
+							: "EFFECT_NOT_FOUND",
+						"Exactly one matching effect instance is required.",
+						{
+							existed: !!ensured.existed,
+							applied: !!ensured.applied
+						}
+					));
+					continue;
+				}
+				if (wantedMatch &&
+						$._pickfx.countEffectInstances(item, "", wantedMatch) !== 1) {
+					clipResults.push(executor.failClip(
+						{ name: clipName },
+						"EFFECT_IDENTITY_MISMATCH",
+						"Applied effect identity was not " + wantedMatch + ".",
+						{
+							existed: !!ensured.existed,
+							applied: !!ensured.applied
+						}
+					));
+					continue;
+				}
+				clipResults.push({
+					clip: clipName,
+					ok: true,
+					effectAlreadyExisted: !!ensured.existed,
+					effectApplied: !!ensured.applied,
+					parameterResolved: false,
+					verified: true,
+					matchName: wantedMatch || null
+				});
+			}
+			batch = executor.summarize(spec, clipResults);
+			batch.targetLocked = true;
+			batch.verified = batch.ok === true;
+			batch.matchName = wantedMatch || null;
+			batch.targetLock = {
+				selectedCount: selected.count,
+				videoItems: selected.debug && selected.debug.videoItems
+					? selected.debug.videoItems
+					: []
+			};
+			batch.debugSelection = selected.debug;
+			batch.productionTerminal = true;
+			return JSON.stringify($._pickfx.jsonSafeParamResult(batch));
+		} catch (e) {
+			return JSON.stringify({
+				ok: false,
+				reason: "EFFECT_NOT_FOUND",
+				detail: String(e),
+				verified: false,
+				targetLocked: false
+			});
+		}
+	},
+
 	setTypedParameter: function (effectName, parameterName, value, kind, expectedLabel) {
 		var selected;
 		var written;
@@ -2886,6 +3658,10 @@ $._pickfx = {
 	listEffectParameters: function (effectName) {
 		var selected;
 		var listed;
+		var inspect;
+		var mapped;
+		var i;
+		var row;
 
 		try {
 			if (typeof $._pickfxParameterResolver === "undefined") {
@@ -2901,6 +3677,43 @@ $._pickfx = {
 			if (!selected.ok) {
 				selected.usedQE = false;
 				return JSON.stringify(selected);
+			}
+
+			if ($._pickfx.isLumetriEffect(effectName, "") &&
+					typeof $._pickfxColorParameterDiscover !== "undefined" &&
+					typeof $._pickfxColorParameterDiscover.inspect === "function") {
+				inspect = $._pickfxColorParameterDiscover.inspect(selected.trackItem);
+				if (!inspect || inspect.ok !== true) {
+					return JSON.stringify({
+						ok: false,
+						reason: (inspect && inspect.reason) || "EFFECT_NOT_FOUND",
+						detail: (inspect && inspect.detail) || "Lumetri Color is not applied.",
+						usedQE: false
+					});
+				}
+				mapped = [];
+				for (i = 0; i < (inspect.parameters || []).length; i++) {
+					row = inspect.parameters[i];
+					if (!row || !row.displayName) {
+						continue;
+					}
+					mapped.push({
+						index: typeof row.diagnosticIndex === "number"
+							? row.diagnosticIndex
+							: row.index,
+						displayName: row.displayName,
+						matchName: row.matchName || null,
+						currentValue: row.currentValue,
+						valueType: row.runtimeType || "number"
+					});
+				}
+				return JSON.stringify($._pickfx.jsonSafeParamResult({
+					ok: true,
+					effect: "Lumetri Color",
+					matchName: "AE.ADBE Lumetri",
+					parameters: mapped,
+					usedQE: false
+				}));
 			}
 
 			listed = $._pickfxParameterResolver.listParameters(selected.trackItem, effectName);
@@ -3529,7 +4342,14 @@ $._pickfx = {
 
 	writeClipParameter: function (trackItem, parameterName, input) {
 		if (typeof $._pickfxConfirmedParameterWrites !== "undefined" && $._pickfxConfirmedParameterWrites.write) {
-			return $._pickfxConfirmedParameterWrites.write(trackItem, parameterName, input);
+			return $._pickfxConfirmedParameterWrites.write(
+				trackItem,
+				parameterName,
+				input,
+				input && input.componentMatchName
+					? String(input.componentMatchName)
+					: ""
+			);
 		}
 		return {
 			ok: false,
@@ -3633,6 +4453,13 @@ $._pickfx = {
 				batch.clipParameter = true;
 				batch.scope = "clip";
 				batch.usedQE = false;
+				batch.targetLocked = true;
+				batch.targetLock = {
+					selectedCount: selected.count,
+					videoItems: selected.debug && selected.debug.videoItems
+						? selected.debug.videoItems
+						: []
+				};
 				batch.debugSelection = selected.debug;
 				batch.runtime = {
 					path: "clip-parameter",
@@ -3675,6 +4502,267 @@ $._pickfx = {
 				detail: String(e),
 				parameter: String(parameterName || ""),
 				clipParameter: true
+			});
+		}
+	},
+
+	compactActionCall: function (call) {
+		if (!call || typeof call !== "object") {
+			return call || null;
+		}
+		return {
+			name: call.name || null,
+			invoked: call.invoked === true,
+			threw: call.threw === true,
+			unavailable: call.unavailable === true,
+			skipped: call.skipped === true,
+			reason: call.reason || null,
+			returnTypeof: call.returnTypeof || null,
+			returnValue: call.returnValue === undefined ? null : call.returnValue,
+			exception: call.exception || null
+		};
+	},
+
+	compactActionProbe: function (probe) {
+		if (!probe || typeof probe !== "object") {
+			return probe || null;
+		}
+		return {
+			label: probe.label || null,
+			threw: probe.threw === true,
+			unavailable: probe.unavailable === true,
+			returnTypeof: probe.returnTypeof || null,
+			returnValue: probe.returnValue && probe.returnValue.json !== undefined
+				? probe.returnValue.json
+				: (probe.returnValue || null),
+			exception: probe.exception || null
+		};
+	},
+
+	compactActionRuntime: function (runtime) {
+		var readable;
+		if (!runtime || typeof runtime !== "object") {
+			return runtime;
+		}
+		readable = runtime.readable ? String(runtime.readable) : "";
+		if (readable.length > 2500) {
+			readable = readable.substring(0, 2500) + "\n…truncated for CEP evalScript return…";
+		}
+		return {
+			temporary: true,
+			compacted: true,
+			actionId: runtime.actionId || "",
+			failingOperation: runtime.failingOperation || null,
+			componentDisplayName: runtime.componentDisplayName || null,
+			componentMatchName: runtime.componentMatchName || null,
+			parameterDisplayName: runtime.parameterDisplayName || null,
+			parameterMatchName: runtime.parameterMatchName || null,
+			getValueTypeof: runtime.getValueTypeof || null,
+			getValue: runtime.getValue && runtime.getValue.json !== undefined
+				? runtime.getValue.json
+				: runtime.getValue,
+			areKeyframesSupported: runtime.areKeyframesSupported || null,
+			isTimeVaryingBefore: runtime.isTimeVaryingBefore || null,
+			isTimeVaryingAfter: runtime.isTimeVaryingAfter || null,
+			requestedValues: runtime.requestedValues || null,
+			calculatedStart: runtime.calculatedStart || null,
+			calculatedEnd: runtime.calculatedEnd || null,
+			clipTimes: runtime.clipTimes || null,
+			sequenceTiming: runtime.sequenceTiming || null,
+			startTimeObject: runtime.startTimeObject || null,
+			endTimeObject: runtime.endTimeObject || null,
+			setTimeVarying: $._pickfx.compactActionCall(runtime.setTimeVarying),
+			addKeyStart: $._pickfx.compactActionCall(runtime.addKeyStart),
+			addKeyEnd: $._pickfx.compactActionCall(runtime.addKeyEnd),
+			setValueAtKeyStart: $._pickfx.compactActionCall(runtime.setValueAtKeyStart),
+			setValueAtKeyEnd: $._pickfx.compactActionCall(runtime.setValueAtKeyEnd),
+			getKeysBeforeCount: runtime.getKeysBeforeRaw && runtime.getKeysBeforeRaw.keys
+				? runtime.getKeysBeforeRaw.keys.length
+				: null,
+			getKeysAfterCount: runtime.getKeysAfterRaw && runtime.getKeysAfterRaw.keys
+				? runtime.getKeysAfterRaw.keys.length
+				: null,
+			getKeysAfter: runtime.getKeysAfterRaw && runtime.getKeysAfterRaw.keys
+				? runtime.getKeysAfterRaw.keys
+				: null,
+			getValueAtTimeStart: $._pickfx.compactActionProbe(runtime.getValueAtTimeStart),
+			getValueAtTimeEnd: $._pickfx.compactActionProbe(runtime.getValueAtTimeEnd),
+			keyCoordinateGuess: runtime.keyCoordinateGuess && runtime.keyCoordinateGuess.guess
+				? runtime.keyCoordinateGuess.guess
+				: runtime.keyCoordinateGuess,
+			caughtException: runtime.caughtException || null,
+			resultOk: runtime.resultOk,
+			resultReason: runtime.resultReason || null,
+			semantics: runtime.semantics || null,
+			readable: readable,
+			diagnosticFile: "Desktop/action-debug.json"
+		};
+	},
+
+	actionHostStatus: function () {
+		return JSON.stringify({
+			ok: true,
+			host: true,
+			runAction: typeof $._pickfx.runAction === "function",
+			keyframeEngine: typeof $._pickfxKeyframeEngine !== "undefined" &&
+				typeof $._pickfxKeyframeEngine.runAction === "function"
+		});
+	},
+
+	presetHostStatus: function () {
+		return JSON.stringify({
+			ok: typeof $._pickfxPresetHost !== "undefined" &&
+				typeof $._pickfxPresetHost.listCapturableComponents === "function" &&
+				typeof $._pickfxPresetHost.applyPreset === "function",
+			host: true,
+			listCapturable: typeof $._pickfxPresetHost !== "undefined" &&
+				typeof $._pickfxPresetHost.listCapturableComponents === "function",
+			applyPreset: typeof $._pickfxPresetHost !== "undefined" &&
+				typeof $._pickfxPresetHost.applyPreset === "function",
+			presetHost: typeof $._pickfxPresetHost !== "undefined"
+		});
+	},
+
+	listCapturableComponents: function () {
+		try {
+			if (typeof $._pickfxPresetHost === "undefined" || !$._pickfxPresetHost.listCapturableComponents) {
+				return JSON.stringify({
+					ok: false,
+					reason: "WRITE_FAILED",
+					detail: "PresetHost is not loaded.",
+					preset: true
+				});
+			}
+			return $._pickfxPresetHost.listCapturableComponents();
+		} catch (e) {
+			return JSON.stringify({
+				ok: false,
+				reason: "WRITE_FAILED",
+				detail: String(e),
+				preset: true
+			});
+		}
+	},
+
+	captureComponent: function (session, componentIndex, offset, limit) {
+		try {
+			if (typeof $._pickfxPresetHost === "undefined" || !$._pickfxPresetHost.captureComponent) {
+				return JSON.stringify({
+					ok: false,
+					reason: "WRITE_FAILED",
+					detail: "PresetHost is not loaded.",
+					preset: true
+				});
+			}
+			return $._pickfxPresetHost.captureComponent(session, componentIndex, offset, limit);
+		} catch (e) {
+			return JSON.stringify({
+				ok: false,
+				reason: "WRITE_FAILED",
+				detail: String(e),
+				preset: true
+			});
+		}
+	},
+
+	applyPickFXPreset: function (preset) {
+		try {
+			if (typeof $._pickfxPresetHost === "undefined" || !$._pickfxPresetHost.applyPreset) {
+				return JSON.stringify({
+					ok: false,
+					reason: "WRITE_FAILED",
+					detail: "PresetHost is not loaded.",
+					preset: true
+				});
+			}
+			return $._pickfxPresetHost.applyPreset(preset);
+		} catch (e) {
+			return JSON.stringify({
+				ok: false,
+				reason: "WRITE_FAILED",
+				detail: String(e),
+				preset: true
+			});
+		}
+	},
+
+	runAction: function (spec) {
+		var result;
+		var safe;
+		var json;
+		var i;
+		try {
+			if (typeof $._pickfxKeyframeEngine === "undefined" || !$._pickfxKeyframeEngine.runAction) {
+				return JSON.stringify({
+					ok: false,
+					reason: "WRITE_FAILED",
+					detail: "KeyframeEngine is not loaded.",
+					action: true,
+					command: true,
+					verified: false,
+					hostReady: true,
+					runAction: true,
+					keyframeEngine: false
+				});
+			}
+			result = $._pickfxKeyframeEngine.runAction(spec);
+			if (result) {
+				result.action = true;
+				result.command = true;
+				result.usedQE = false;
+				if (result.runtime) {
+					result.runtime = $._pickfx.compactActionRuntime(result.runtime);
+				}
+				if (result.clips && result.clips.length) {
+					for (i = 0; i < result.clips.length; i++) {
+						if (result.clips[i] && result.clips[i].runtime) {
+							result.clips[i].runtime = $._pickfx.compactActionRuntime(result.clips[i].runtime);
+						}
+					}
+				}
+			}
+			safe = $._pickfx.jsonSafeParamResult(result);
+			try {
+				json = JSON.stringify(safe);
+			} catch (serErr) {
+				if (safe && safe.runtime) {
+					safe.runtime = {
+						stringifyFailed: true,
+						failingOperation: safe.runtime.failingOperation || null,
+						readable: safe.runtime.readable || null,
+						error: String(serErr)
+					};
+				}
+				json = JSON.stringify(safe);
+			}
+			if (json && json.length > 30000) {
+				if (safe.runtime) {
+					safe.runtime = {
+						compacted: true,
+						failingOperation: safe.runtime.failingOperation || null,
+						resultReason: safe.runtime.resultReason || null,
+						readable: "CEP evalScript return truncated; see Desktop/action-debug.json"
+					};
+				}
+				if (safe.clips) {
+					for (i = 0; i < safe.clips.length; i++) {
+						if (safe.clips[i]) {
+							safe.clips[i].runtime = undefined;
+						}
+					}
+				}
+				json = JSON.stringify(safe);
+			}
+			return json;
+		} catch (e) {
+			return JSON.stringify({
+				ok: false,
+				reason: "WRITE_FAILED",
+				detail: String(e),
+				action: true,
+				command: true,
+				verified: false,
+				hostReady: true
 			});
 		}
 	},
@@ -4242,6 +5330,73 @@ $._pickfx = {
 			buttonId: "test-enum-parameter-write-btn",
 			handler: "invokeEnumParameterWriteTest"
 		});
+	},
+
+	discoverEffectRegistry: function () {
+		var selected;
+		var inspected;
+		try {
+			if (typeof $._pickfxEffectRegistryDiscovery === "undefined" ||
+					typeof $._pickfxEffectRegistryDiscovery.discover !== "function") {
+				return JSON.stringify({
+					ok: false,
+					operation: "effect.registry.discovery",
+					reason: "EFFECT_NOT_FOUND",
+					detail: "EffectRegistryDiscovery.js is not loaded.",
+					selectedClip: false,
+					readOnly: true,
+					usedQE: false,
+					setValueCalls: 0,
+					writeOperationCalls: 0,
+					writesPerformed: false,
+					settersCalled: false,
+					components: [],
+					registry: { components: [] }
+				});
+			}
+			selected = $._pickfx.firstSelectedVideoTrackItem();
+			if (!selected.ok) {
+				inspected = $._pickfxEffectRegistryDiscovery.discoverSelected(selected);
+				inspected.usedQE = false;
+				inspected.setValueCalls = 0;
+				inspected.writeOperationCalls = 0;
+				inspected.writesPerformed = false;
+				inspected.settersCalled = false;
+				try {
+					$.writeln(inspected.humanReport || "PICKFX EFFECT DISCOVERY\n\nSelected clip: NO");
+				} catch (ignoreLog) {}
+				return JSON.stringify($._pickfx.jsonSafeParamResult(inspected));
+			}
+			inspected = $._pickfxEffectRegistryDiscovery.discover(selected.trackItem);
+			if (inspected) {
+				inspected.usedQE = false;
+				inspected.setValueCalls = 0;
+				inspected.writeOperationCalls = 0;
+				inspected.writesPerformed = false;
+				inspected.settersCalled = false;
+				inspected.operation = inspected.operation || "effect.registry.discovery";
+				inspected.readOnly = true;
+			}
+			try {
+				$.writeln(inspected && inspected.humanReport ? inspected.humanReport : "PICKFX EFFECT DISCOVERY");
+			} catch (ignoreWrite) {}
+			return JSON.stringify($._pickfx.jsonSafeParamResult(inspected));
+		} catch (e) {
+			return JSON.stringify({
+				ok: false,
+				operation: "effect.registry.discovery",
+				reason: "EFFECT_NOT_FOUND",
+				detail: String(e),
+				selectedClip: false,
+				readOnly: true,
+				usedQE: false,
+				setValueCalls: 0,
+				writeOperationCalls: 0,
+				writesPerformed: false,
+				settersCalled: false,
+				components: []
+			});
+		}
 	},
 
 	debugEnumParameterWriteTest: function (ident) {
