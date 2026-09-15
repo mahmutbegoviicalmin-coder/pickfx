@@ -29,6 +29,16 @@ var PresetHost = (function () {
 		return null;
 	}
 
+	function capability() {
+		if (typeof PresetCapability !== "undefined") {
+			return PresetCapability;
+		}
+		if (typeof $ !== "undefined" && $._pickfxPresetCapability) {
+			return $._pickfxPresetCapability;
+		}
+		return null;
+	}
+
 	function fail(reason, detail, extra) {
 		var payload = {
 			ok: false,
@@ -473,109 +483,56 @@ var PresetHost = (function () {
 		return null;
 	}
 
-	function isTimeVarying(param) {
-		try {
-			if (param && typeof param.isTimeVarying === "function") {
-				return param.isTimeVarying() === true;
-			}
-		} catch (err) {
-			return { error: String(err) };
-		}
-		return false;
-	}
-
-	function classifyParam(param, displayName, matchName, order) {
+	function classifyParam(param, displayName, matchName, order, componentDisplayName, componentMatchName, parentName) {
 		var api = schema();
-		var live;
-		var detected;
+		var cap = capability();
+		var classified;
 		var serialized;
-		var writable = false;
-		var varying;
-		var type;
 		if (api && api.isSkippedParameterName(displayName)) {
 			return {
 				status: "UNSUPPORTED_TYPE",
 				reason: "UNSUPPORTED_TYPE",
 				order: order,
 				displayName: displayName,
-				matchName: matchName || ""
+				matchName: matchName || "",
+				parentName: parentName || ""
 			};
 		}
-		if (!param) {
+		if (!cap || !cap.classify) {
 			return {
-				status: "READ_FAILED",
-				reason: "READ_FAILED",
-				order: order,
-				displayName: displayName,
-				matchName: matchName || ""
-			};
-		}
-		try {
-			writable = typeof param.setValue === "function";
-		} catch (ignoreWritable) {}
-		varying = isTimeVarying(param);
-		if (varying && varying.error) {
-			return {
-				status: "READ_FAILED",
-				reason: "READ_FAILED",
-				order: order,
-				displayName: displayName,
-				matchName: matchName || ""
-			};
-		}
-		if (varying === true) {
-			return {
-				status: "KEYFRAMED_PARAMETER_UNSUPPORTED",
-				reason: "KEYFRAMED_PARAMETER_UNSUPPORTED",
-				order: order,
-				displayName: displayName,
-				matchName: matchName || ""
-			};
-		}
-		try {
-			live = param.getValue();
-		} catch (readErr) {
-			return {
-				status: "READ_FAILED",
-				reason: "READ_FAILED",
-				order: order,
-				displayName: displayName,
-				matchName: matchName || ""
-			};
-		}
-		if (typeof ParameterValueType !== "undefined" && ParameterValueType.detectLive) {
-			detected = ParameterValueType.detectLive(param, live);
-		} else if (typeof ParameterValueType !== "undefined" && ParameterValueType.detect) {
-			detected = ParameterValueType.detect(live);
-		} else if (typeof live === "number" && isFinite(live)) {
-			detected = { type: "number", value: live };
-		} else if (live === true || live === false) {
-			detected = { type: "boolean", value: live };
-		} else {
-			detected = { type: "unknown", value: live };
-		}
-		type = detected && detected.type ? detected.type : "unknown";
-		if (type === "enum" || type === "color" || type === "string" || type === "unknown") {
-			return {
-				status: "UNSUPPORTED_TYPE",
-				reason: "UNSUPPORTED_TYPE",
+				status: "PRESET_HOST_ENGINE_MISSING",
+				reason: "PRESET_HOST_ENGINE_MISSING",
 				order: order,
 				displayName: displayName,
 				matchName: matchName || "",
-				type: type
+				parentName: parentName || "",
+				parityBug: true
 			};
 		}
-		if (!writable) {
+		classified = cap.classify(param, displayName, matchName, componentDisplayName, componentMatchName);
+		if (!classified.presetCapture) {
 			return {
-				status: "NOT_WRITABLE",
-				reason: "NOT_WRITABLE",
+				status: classified.reason || "UNSUPPORTED_TYPE",
+				reason: classified.reason || "UNSUPPORTED_TYPE",
 				order: order,
 				displayName: displayName,
 				matchName: matchName || "",
-				type: type
+				parentName: parentName || "",
+				type: classified.type,
+				value: classified.value,
+				valueShape: classified.valueShape,
+				pickfxRead: classified.pickfxRead,
+				pickfxWrite: classified.pickfxWrite,
+				pickfxVerify: classified.pickfxVerify,
+				keyCount: classified.keyCount,
+				timeVarying: classified.timeVarying,
+				parityBug: classified.parityBug === true,
+				getValueSuccess: classified.getValueSuccess,
+				typeofSetValue: classified.typeofSetValue,
+				areKeyframesSupported: classified.areKeyframesSupported
 			};
 		}
-		serialized = api ? api.serializeValue(type, detected.value !== undefined ? detected.value : live) : null;
+		serialized = api ? api.serializeValue(classified.type, classified.value) : null;
 		if (!serialized || !serialized.ok) {
 			return {
 				status: "NOT_VERIFIABLE",
@@ -583,7 +540,8 @@ var PresetHost = (function () {
 				order: order,
 				displayName: displayName,
 				matchName: matchName || "",
-				type: type
+				parentName: parentName || "",
+				type: classified.type
 			};
 		}
 		return {
@@ -592,14 +550,25 @@ var PresetHost = (function () {
 			order: order,
 			displayName: displayName,
 			matchName: matchName || "",
+			parentName: parentName || "",
 			type: serialized.type,
-			value: serialized.value
+			value: serialized.value,
+			valueShape: classified.valueShape,
+			pickfxRead: true,
+			pickfxWrite: true,
+			pickfxVerify: true,
+			keyCount: classified.keyCount,
+			timeVarying: classified.timeVarying,
+			getValueSuccess: true,
+			typeofSetValue: classified.typeofSetValue,
+			areKeyframesSupported: classified.areKeyframesSupported
 		};
 	}
 
-	function walkParams(node, out, parentName) {
+	function walkParams(node, out, parentName, depth) {
 		var res = resolver();
 		var api = schema();
+		var cap = capability();
 		var props;
 		var countInfo;
 		var indexBase;
@@ -608,6 +577,12 @@ var PresetHost = (function () {
 		var displayName;
 		var matchName;
 		var nested;
+		var nestedCount;
+		var isContainer;
+		var isLeaf;
+		if (depth > 8) {
+			return;
+		}
 		if (!res) {
 			return;
 		}
@@ -624,12 +599,12 @@ var PresetHost = (function () {
 			param = res.collectionItem(props, i, indexBase);
 			displayName = res.readString(param, "displayName") || "";
 			matchName = res.readString(param, "matchName") || "";
-			if (api && api.isContainerParameterName(displayName)) {
-				continue;
-			}
 			nested = propertyCollection(param);
-			if (nested && res.collectionCount(nested).count > 0) {
-				walkParams(param, out, displayName || parentName);
+			nestedCount = nested ? res.collectionCount(nested).count : 0;
+			isContainer = api && api.isContainerParameterName(displayName);
+			isLeaf = cap && cap.hasDirectLiveValue ? cap.hasDirectLiveValue(param) : false;
+			if (isContainer || (nestedCount > 0 && !isLeaf)) {
+				walkParams(param, out, displayName || parentName, (depth || 0) + 1);
 				continue;
 			}
 			if (api && api.isSkippedParameterName(displayName)) {
@@ -644,45 +619,50 @@ var PresetHost = (function () {
 		}
 	}
 
-	function uniqueNameConflict(rows, displayName, matchName) {
-		var i;
-		var matchCount = 0;
-		var nameCount = 0;
-		var matchFold = String(matchName || "").toLowerCase();
-		var nameFold = String(displayName || "").toLowerCase();
-		if (matchFold) {
-			for (i = 0; i < rows.length; i++) {
-				if (String(rows[i].matchName || "").toLowerCase() === matchFold) {
-					matchCount += 1;
-				}
-			}
-			return matchCount > 1;
-		}
-		for (i = 0; i < rows.length; i++) {
-			if (String(rows[i].displayName || "").toLowerCase() === nameFold) {
-				nameCount += 1;
-			}
-		}
-		return nameCount > 1;
+	function paramIdentityKey(row) {
+		return String((row && row.parentName) || "").toLowerCase() + "||" +
+			String((row && row.displayName) || "").toLowerCase() + "||" +
+			String((row && row.matchName) || "").toLowerCase();
 	}
 
-	function classifyLeaves(component) {
+	function uniqueNameConflict(rows, row) {
+		var i;
+		var count = 0;
+		var key = paramIdentityKey(row);
+		for (i = 0; i < (rows || []).length; i++) {
+			if (paramIdentityKey(rows[i]) === key) {
+				count += 1;
+			}
+		}
+		return count > 1;
+	}
+
+	function classifyLeaves(component, componentDisplayName, componentMatchName) {
 		var leaves = [];
 		var classified = [];
 		var i;
 		var row;
 		var info;
-		walkParams(component, leaves, "");
+		walkParams(component, leaves, "", 0);
 		for (i = 0; i < leaves.length; i++) {
 			row = leaves[i];
-			info = classifyParam(row.param, row.displayName, row.matchName, i);
-			if (info.status === "SUPPORTED" && uniqueNameConflict(leaves, row.displayName, row.matchName)) {
+			info = classifyParam(
+				row.param,
+				row.displayName,
+				row.matchName,
+				i,
+				componentDisplayName,
+				componentMatchName,
+				row.parentName
+			);
+			if (info.status === "SUPPORTED" && uniqueNameConflict(leaves, row)) {
 				info = {
 					status: "AMBIGUOUS_PARAMETER",
 					reason: "AMBIGUOUS_PARAMETER",
 					order: i,
 					displayName: row.displayName,
-					matchName: row.matchName || ""
+					matchName: row.matchName || "",
+					parentName: row.parentName || ""
 				};
 			}
 			classified.push(info);
@@ -699,23 +679,36 @@ var PresetHost = (function () {
 		var captureStatus;
 		var kind = row.kind;
 		var limitation = "";
-		classified = classifyLeaves(row._component);
+		var skippedReasons = [];
+		var engineMissing = !resolver() || !capability() || !capability().classify;
+		classified = classifyLeaves(row._component, row.displayName, row.matchName);
 		for (i = 0; i < classified.length; i++) {
 			if (classified[i].status === "SUPPORTED") {
 				supported += 1;
 			} else {
 				skipped += 1;
-				if (classified[i].status === "KEYFRAMED_PARAMETER_UNSUPPORTED") {
+				if (classified[i].status === "ANIMATION_REPLAY_NOT_YET_VERIFIED" ||
+						classified[i].status === "KEYFRAMED_PARAMETER_UNSUPPORTED") {
 					keyframed += 1;
+				}
+				if (skippedReasons.length < 6) {
+					skippedReasons.push({
+						displayName: classified[i].displayName || "",
+						reason: classified[i].reason || classified[i].status || ""
+					});
 				}
 			}
 		}
 		if (supported === 0) {
 			captureStatus = "unsupported";
 			kind = row.kind === "intrinsic" ? "intrinsic" : "unsupported";
-			limitation = keyframed === classified.length && classified.length
-				? "Animated parameters aren’t captured yet"
-				: "Cannot reproduce safely";
+			if (engineMissing) {
+				limitation = "Cannot reproduce safely";
+			} else if (keyframed === classified.length && classified.length) {
+				limitation = "Animated parameters aren’t captured yet";
+			} else {
+				limitation = "Cannot reproduce safely";
+			}
 		} else if (skipped) {
 			captureStatus = "partial";
 		} else {
@@ -733,7 +726,9 @@ var PresetHost = (function () {
 			skippedCount: skipped,
 			keyframedCount: keyframed,
 			captureStatus: captureStatus,
-			limitation: limitation
+			limitation: limitation,
+			skippedReasons: skippedReasons,
+			engineMissing: engineMissing === true
 		};
 	}
 
@@ -769,7 +764,8 @@ var PresetHost = (function () {
 			session: session,
 			clipName: session.clipName,
 			componentStack: session.componentStack,
-			components: components
+			components: components,
+			host: capability() && capability().hostStatus ? capability().hostStatus() : { ok: false }
 		});
 	}
 
@@ -814,7 +810,7 @@ var PresetHost = (function () {
 		if (!row) {
 			return stringify(fail("COMPONENT_NOT_FOUND", "That effect is no longer on the clip."));
 		}
-		classified = classifyLeaves(row._component);
+		classified = classifyLeaves(row._component, row.displayName, row.matchName);
 		pageSize = typeof limit === "number" && limit > 0 ? limit : PAGE_SIZE;
 		start = typeof offset === "number" && offset > 0 ? offset : 0;
 		for (i = start; i < classified.length && slice.length + skipped.length < pageSize; i++) {
@@ -824,6 +820,7 @@ var PresetHost = (function () {
 					order: info.order,
 					displayName: info.displayName,
 					matchName: info.matchName,
+					parentName: info.parentName || "",
 					type: info.type,
 					value: info.value
 				});
@@ -943,8 +940,10 @@ var PresetHost = (function () {
 		var i;
 		var matchFold = String(spec.matchName || "").toLowerCase();
 		var nameFold = String(spec.displayName || "").toLowerCase();
+		var parentFold = String(spec.parentName || "").toLowerCase();
 		var matchHits = [];
 		var nameHits = [];
+		var parentHits = [];
 		var row;
 		for (i = 0; i < leaves.length; i++) {
 			row = leaves[i];
@@ -953,7 +952,13 @@ var PresetHost = (function () {
 			}
 			if (nameFold && String(row.displayName || "").toLowerCase() === nameFold) {
 				nameHits.push(row);
+				if (parentFold && String(row.parentName || "").toLowerCase() === parentFold) {
+					parentHits.push(row);
+				}
 			}
+		}
+		if (parentHits.length === 1) {
+			return { ok: true, row: parentHits[0] };
 		}
 		if (matchFold && matchHits.length === 1) {
 			return { ok: true, row: matchHits[0] };
@@ -992,73 +997,15 @@ var PresetHost = (function () {
 	}
 
 	function writeParam(param, spec) {
-		var varying;
-		var requested = spec.value;
-		var writeValue = requested;
-		var setResult;
-		var methodUsed;
-		var verified;
-		var actual;
+		var cap = capability();
 		var api = writer();
-		var readApi;
-		varying = isTimeVarying(param);
-		if (varying === true) {
-			return { ok: false, reason: "KEYFRAMED_PARAMETER_UNSUPPORTED" };
+		if (cap && cap.isActuallyKeyframed && cap.isActuallyKeyframed(param)) {
+			return { ok: false, reason: "ANIMATION_REPLAY_NOT_YET_VERIFIED" };
 		}
-		if (spec.type === "point" && typeof PointValue !== "undefined" && PointValue.normalize) {
-			writeValue = PointValue.normalize(requested);
-			if (!writeValue || writeValue.ok !== true) {
-				return { ok: false, reason: "INVALID_VALUE" };
-			}
-			writeValue = writeValue.value || [requested[0], requested[1]];
+		if (api && api.writeResolved) {
+			return api.writeResolved(param, spec.value, spec.type, spec.displayName);
 		}
-		try {
-			if (typeof param.setValue !== "function") {
-				return { ok: false, reason: "NOT_WRITABLE" };
-			}
-		} catch (ignoreType) {
-			return { ok: false, reason: "NOT_WRITABLE" };
-		}
-		methodUsed = "setValue(value, true)";
-		try {
-			setResult = param.setValue(writeValue, true);
-		} catch (setTwoErr) {
-			methodUsed = "setValue(value)";
-			try {
-				setResult = param.setValue(writeValue);
-			} catch (setOneErr) {
-				return { ok: false, reason: "WRITE_FAILED", detail: String(setOneErr) };
-			}
-		}
-		if (setResult === false) {
-			return { ok: false, reason: "WRITE_FAILED", detail: methodUsed + " returned false." };
-		}
-		if (api && api.readBackVerified) {
-			verified = api.readBackVerified(param, spec.type === "angle" ? "number" : spec.type, requested, "", []);
-			if (!verified || !verified.ok) {
-				return { ok: false, reason: "VALUE_NOT_VERIFIED" };
-			}
-			return { ok: true, verified: true };
-		}
-		readApi = typeof ParameterReadBack !== "undefined" ? ParameterReadBack : (typeof $ !== "undefined" ? $._pickfxParameterReadBack : null);
-		if (readApi && readApi.verifyWithRetry) {
-			verified = readApi.verifyWithRetry(param, requested, function (wanted, got) {
-				return valuesClose(spec.type, wanted, got);
-			});
-			if (!verified || !verified.ok) {
-				return { ok: false, reason: "VALUE_NOT_VERIFIED" };
-			}
-			return { ok: true, verified: true };
-		}
-		try {
-			actual = param.getValue();
-		} catch (readErr) {
-			return { ok: false, reason: "VALUE_NOT_VERIFIED" };
-		}
-		if (!valuesClose(spec.type, requested, actual).ok) {
-			return { ok: false, reason: "VALUE_NOT_VERIFIED" };
-		}
-		return { ok: true, verified: true };
+		return { ok: false, reason: "PRESET_HOST_ENGINE_MISSING" };
 	}
 
 	function applyParameters(component, parameters) {
@@ -1546,6 +1493,277 @@ var PresetHost = (function () {
 		});
 	}
 
+	function inspectPresetCaptureSupport() {
+		var selected;
+		var item;
+		var snap;
+		var i;
+		var j;
+		var classified;
+		var row;
+		var info;
+		var components = [];
+		var params;
+		var parityBugs = 0;
+		selected = selectedVideo();
+		if (!selected || selected.ok !== true) {
+			return stringify(fail(
+				(selected && selected.reason) || "NO_VIDEO_SELECTION",
+				(selected && selected.detail) || "Select a video clip.",
+				{ diagnostic: true }
+			));
+		}
+		if (selected.count !== 1) {
+			return stringify(fail(
+				"CAPTURE_REQUIRES_SINGLE_CLIP",
+				"Capture diagnostics require one selected clip.",
+				{ diagnostic: true }
+			));
+		}
+		item = selected.items[0];
+		snap = snapshotComponents(item);
+		for (i = 0; i < snap.length; i++) {
+			row = snap[i];
+			classified = classifyLeaves(row._component, row.displayName, row.matchName);
+			params = [];
+			for (j = 0; j < classified.length && params.length < 40; j++) {
+				info = classified[j];
+				if (info.parityBug || (info.pickfxWrite === true && info.status !== "SUPPORTED")) {
+					parityBugs += 1;
+				}
+				params.push({
+					displayName: info.displayName,
+					matchName: info.matchName,
+					parentName: info.parentName || "",
+					getValueSuccess: info.getValueSuccess === true ||
+						(info.pickfxRead !== false && info.status !== "READ_FAILED"),
+					rawValue: info.value,
+					valueType: info.type || "",
+					valueShape: info.valueShape || "",
+					typeofSetValue: info.typeofSetValue ||
+						(info.status === "NOT_WRITABLE" ? "unavailable" : "function"),
+					isTimeVarying: info.timeVarying === true,
+					areKeyframesSupported: info.areKeyframesSupported === true,
+					keyCount: info.keyCount || 0,
+					pickfxRead: info.pickfxRead === true || info.status === "SUPPORTED",
+					pickfxWrite: info.pickfxWrite === true || info.status === "SUPPORTED",
+					pickfxVerify: info.pickfxVerify === true || info.status === "SUPPORTED",
+					presetCapture: info.status === "SUPPORTED",
+					reason: info.reason || info.status,
+					parityBug: info.parityBug === true ||
+						((info.pickfxWrite === true) && info.status !== "SUPPORTED" &&
+							info.status !== "ANIMATION_REPLAY_NOT_YET_VERIFIED")
+				});
+			}
+			components.push({
+				displayName: row.displayName,
+				matchName: row.matchName,
+				kind: row.kind,
+				parameters: params
+			});
+		}
+		return stringify({
+			ok: true,
+			diagnostic: true,
+			host: capability() && capability().hostStatus ? capability().hostStatus() : { ok: false },
+			parityBugs: parityBugs,
+			components: components
+		});
+	}
+
+	function presetHostCapabilityStatus() {
+		var cap = capability();
+		if (cap && cap.hostStatus) {
+			return stringify(cap.hostStatus());
+		}
+		return stringify({
+			ok: false,
+			reason: "PRESET_HOST_ENGINE_MISSING",
+			missing: ["presetCapability"]
+		});
+	}
+
+	function probePresetEffectCompatibility(effectName) {
+		var selected;
+		var item;
+		var before;
+		var after;
+		var added;
+		var identity;
+		var classified;
+		var ready = 0;
+		var partial = 0;
+		var unsupported = 0;
+		var i;
+		var info;
+		selected = selectedVideo();
+		if (!selected || selected.ok !== true || selected.count !== 1) {
+			return stringify(fail(
+				(selected && selected.reason) || "NO_VIDEO_SELECTION",
+				"Compatibility probe requires one disposable selected clip."
+			));
+		}
+		item = selected.items[0];
+		before = snapshotComponents(item);
+		added = addEffect(item, effectName);
+		if (!added || added.ok !== true) {
+			return stringify({
+				ok: false,
+				liveProbe: true,
+				effect: effectName,
+				reason: (added && added.reason) || "PRESET_EFFECT_UNAVAILABLE"
+			});
+		}
+		after = snapshotComponents(item);
+		identity = schema().identifyInserted(before, after);
+		if (!identity || !identity.ok) {
+			return stringify({
+				ok: false,
+				liveProbe: true,
+				effect: effectName,
+				reason: "NEW_EFFECT_INSTANCE_AMBIGUOUS",
+				status: "UNSUPPORTED"
+			});
+		}
+		classified = classifyLeaves(
+			identity.component._component,
+			identity.component.displayName,
+			identity.component.matchName
+		);
+		for (i = 0; i < classified.length; i++) {
+			info = classified[i];
+			if (info.status === "SUPPORTED") {
+				ready += 1;
+			} else if (info.status === "ANIMATION_REPLAY_NOT_YET_VERIFIED" ||
+					info.status === "UNSUPPORTED_TYPE" ||
+					info.status === "AMBIGUOUS_PARAMETER") {
+				partial += 1;
+			} else {
+				unsupported += 1;
+			}
+		}
+		return stringify({
+			ok: true,
+			liveProbe: true,
+			effect: effectName,
+			status: ready && !unsupported && !partial ? "READY" : (ready ? "PARTIAL" : "UNSUPPORTED"),
+			supportedParameters: ready,
+			partialParameters: partial,
+			unsupportedParameters: unsupported,
+			identifyVia: identity.via || "",
+			parameters: classified.slice(0, 40)
+		});
+	}
+
+	function videoEffectNames() {
+		var names = [];
+		var list;
+		var count = 0;
+		var i;
+		var item;
+		try {
+			if (typeof $ !== "undefined" && $._pickfxQE && $._pickfxQE.enable) {
+				$._pickfxQE.enable();
+			}
+			list = qe.project.getVideoEffectList();
+		} catch (listErr) {
+			return { names: names, error: String(listErr) };
+		}
+		if (list && typeof list.numItems === "number") {
+			count = list.numItems;
+		} else if (list && typeof list.length === "number") {
+			count = list.length;
+		}
+		for (i = 0; i < count; i++) {
+			try {
+				item = list[i];
+				if (item && item.name) {
+					names.push(String(item.name));
+				} else if (item) {
+					names.push(String(item));
+				}
+			} catch (ignoreItem) {}
+		}
+		return { names: names };
+	}
+
+	function probePresetRegistryCompatibility() {
+		var selected;
+		var listed;
+		var names;
+		var i;
+		var probed;
+		var parsed;
+		var ready = 0;
+		var partial = 0;
+		var unsupported = 0;
+		var addFailed = 0;
+		var qeResolvable = 0;
+		var samples = [];
+		selected = selectedVideo();
+		if (!selected || selected.ok !== true || selected.count !== 1) {
+			return stringify(fail(
+				(selected && selected.reason) || "NO_VIDEO_SELECTION",
+				"Registry compatibility requires one disposable selected clip.",
+				{ liveProbe: true, diagnostic: true }
+			));
+		}
+		listed = videoEffectNames();
+		names = listed.names || [];
+		for (i = 0; i < names.length; i++) {
+			if (effectAvailable(names[i])) {
+				qeResolvable += 1;
+			}
+			probed = probePresetEffectCompatibility(names[i]);
+			try {
+				parsed = typeof probed === "string" ? JSON.parse(probed) : probed;
+			} catch (ignoreParse) {
+				parsed = { ok: false, status: "UNSUPPORTED", effect: names[i] };
+			}
+			if (!parsed || parsed.ok !== true) {
+				addFailed += 1;
+				unsupported += 1;
+				if (samples.length < 20) {
+					samples.push({
+						effect: names[i],
+						status: "UNSUPPORTED",
+						reason: (parsed && parsed.reason) || "PRESET_EFFECT_UNAVAILABLE"
+					});
+				}
+				continue;
+			}
+			if (parsed.status === "READY") {
+				ready += 1;
+			} else if (parsed.status === "PARTIAL") {
+				partial += 1;
+			} else {
+				unsupported += 1;
+			}
+			if (samples.length < 20) {
+				samples.push({
+					effect: names[i],
+					status: parsed.status,
+					supportedParameters: parsed.supportedParameters || 0,
+					partialParameters: parsed.partialParameters || 0,
+					unsupportedParameters: parsed.unsupportedParameters || 0
+				});
+			}
+		}
+		return stringify({
+			ok: true,
+			liveProbe: true,
+			diagnostic: true,
+			totalDiscovered: names.length,
+			qeResolvable: qeResolvable,
+			presetReady: ready,
+			partial: partial,
+			unsupported: unsupported,
+			addFailed: addFailed,
+			listError: listed.error || "",
+			samples: samples
+		});
+	}
+
 	return {
 		PAGE_SIZE: PAGE_SIZE,
 		MAX_RESULT_BYTES: MAX_RESULT_BYTES,
@@ -1557,6 +1775,10 @@ var PresetHost = (function () {
 		fingerprintItem: fingerprintItem,
 		componentStackSignatureFromRows: componentStackSignatureFromRows,
 		probeDuplicateEffectInsert: probeDuplicateEffectInsert,
+		inspectPresetCaptureSupport: inspectPresetCaptureSupport,
+		presetHostCapabilityStatus: presetHostCapabilityStatus,
+		probePresetEffectCompatibility: probePresetEffectCompatibility,
+		probePresetRegistryCompatibility: probePresetRegistryCompatibility,
 		identifyInserted: function (before, after) {
 			return schema().identifyInserted(before, after);
 		},

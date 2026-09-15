@@ -31,7 +31,24 @@
 	var previousPickfx;
 	var previousPickfxQE;
 	var previousResolver;
+	var classified;
+	var controls;
+	var sharedFs;
+	var accountIds;
 	var i;
+
+	var USER_A = "11111111-1111-4111-8111-111111111111";
+	var USER_B = "22222222-2222-4222-8222-222222222222";
+
+	function scopedStorage(userId, fs, extra) {
+		var options = extra || {};
+		options.fs = fs || memoryFs();
+		options.userId = userId || USER_A;
+		if (!options.userDataPath) {
+			options.userDataPath = "/tmp";
+		}
+		return options;
+	}
 
 	function memoryFs() {
 		var files = {};
@@ -158,7 +175,7 @@
 	});
 	assert("empty name is rejected", checked.ok === false && checked.reason === "EMPTY_NAME");
 
-	storage = { fs: memoryFs(), directory: "/tmp/PickFX/presets", userDataPath: "/tmp" };
+	storage = scopedStorage(USER_A, memoryFs(), { directory: "/tmp/PickFX/users/" + USER_A + "/presets" });
 	saved = PresetStore.save(preset.preset, storage);
 	assert("save writes a valid preset", saved.ok === true);
 	saved = PresetStore.save(samplePreset("talking head clean", { token: "cd34ef" }).preset, storage);
@@ -167,7 +184,8 @@
 		fs: storage.fs,
 		directory: storage.directory,
 		userDataPath: storage.userDataPath,
-		replaceId: preset.preset.id
+		replaceId: preset.preset.id,
+		userId: USER_A
 	});
 	assert("replace overwrites only after confirmation", saved.ok === true && saved.preset.id === preset.preset.id);
 
@@ -192,7 +210,7 @@
 	listed = PresetStore.list(storage);
 	assert("delete does not rewrite other files as a bundle", true);
 
-	saved = PresetStore.save(preset.preset, { fs: failingFs(), directory: "/tmp/PickFX/presets", userDataPath: "/tmp" });
+	saved = PresetStore.save(preset.preset, { fs: failingFs(), directory: "/tmp/PickFX/presets", userDataPath: "/tmp", userId: USER_A });
 	assert("storage failure does not report save success", saved.ok === false && saved.reason === "PRESET_STORAGE_UNAVAILABLE");
 
 	results = PresetSearch.search("talking", [samplePreset("Talking Head Clean").preset, samplePreset("Product B-Roll").preset]);
@@ -299,11 +317,20 @@
 		options = options || {};
 		return {
 			displayName: name,
-			matchName: "",
+			matchName: options.matchName || "",
 			_value: value,
 			_writes: [],
+			numKeys: options.actualKeys || 0,
+			getKeys: function () {
+				var keys = [];
+				var k;
+				for (k = 0; k < (options.actualKeys || 0); k++) {
+					keys.push(k);
+				}
+				return keys;
+			},
 			isTimeVarying: function () {
-				return options.keyframed === true;
+				return options.keyframed === true || (options.actualKeys || 0) > 0;
 			},
 			getValue: function () {
 				return this._value;
@@ -360,6 +387,37 @@
 			}
 		};
 		$._pickfxParameterResolver = mockResolver();
+		if (!$._pickfxParameterWriter) {
+			$._pickfxParameterWriter = {};
+		}
+		$._pickfxParameterWriter.writeResolved = function (param, value, kind) {
+			var actual;
+			if (!param || typeof param.setValue !== "function") {
+				return { ok: false, reason: "NOT_WRITABLE", type: kind };
+			}
+			try {
+				param.setValue(value, true);
+			} catch (setTwoErr) {
+				try {
+					param.setValue(value);
+				} catch (setOneErr) {
+					return { ok: false, reason: "WRITE_FAILED", type: kind, detail: String(setOneErr) };
+				}
+			}
+			try {
+				actual = param.getValue();
+			} catch (readErr) {
+				return { ok: false, reason: "VALUE_NOT_VERIFIED", type: kind };
+			}
+			if (kind === "point" && actual && actual.length === 2 && value && value.length === 2) {
+				if (actual[0] !== value[0] || actual[1] !== value[1]) {
+					return { ok: false, reason: "VALUE_NOT_VERIFIED", type: kind };
+				}
+			} else if (actual !== value) {
+				return { ok: false, reason: "VALUE_NOT_VERIFIED", type: kind };
+			}
+			return { ok: true, verified: true, type: kind, actualValue: actual };
+		};
 		$._pickfx = {
 			selectedVideoTrackItems: function () {
 				if (!selectedItems || !selectedItems.length) {
@@ -396,13 +454,17 @@
 			},
 			applyEffectToTrackItem: function (item, effect) {
 				var next;
-				qeOptions.addCalls.push(item.name);
+				qeOptions.addCalls.push(effect && effect.name ? effect.name : item.name);
 				if (qeOptions.mutateOnAdd) {
 					next = item.components.numItems;
 					item.components[next] = makeComponent(
-						"Gaussian Blur",
-						"AE.ADBE Gaussian Blur",
-						[makeParam("Blurriness", 0)]
+						effect && effect.name ? effect.name : "Gaussian Blur",
+						effect && effect.name === "Gaussian Blur" ? "AE.ADBE Gaussian Blur" : "",
+						[
+							makeParam("Blurriness", 0),
+							makeParam("Exposure", 0),
+							makeParam("Brightness", 0)
+						]
 					);
 					item.components.numItems += 1;
 				}
@@ -469,10 +531,20 @@
 	});
 	installHostMocks([clipA]);
 	parsed = JSON.parse(PresetHost.listCapturableComponents());
-	assert("keyframed component is not fully capturable", parsed.components[0].keyframedCount === 1);
+	assert("time-varying without keys stays capturable", parsed.components[0].supportedParameterCount === 1);
+	assert("time-varying without keys is not marked animated", parsed.components[0].keyframedCount === 0);
+
+	keyframedParam = makeParam("Scale", 100, { actualKeys: 2 });
+	clipA = makeClip({
+		name: "Talking",
+		components: [makeComponent("Motion", "AE.ADBE Motion", [keyframedParam])]
+	});
+	installHostMocks([clipA]);
+	parsed = JSON.parse(PresetHost.listCapturableComponents());
+	assert("actual keys are counted as animation", parsed.components[0].keyframedCount === 1);
 	parsed = JSON.parse(PresetHost.captureComponent(parsed.session, 0, 0, 20));
-	assert("keyframed parameters are skipped with explicit reason", parsed.skipped.length === 1 &&
-		parsed.skipped[0].reason === "KEYFRAMED_PARAMETER_UNSUPPORTED");
+	assert("actual keys are skipped with animation reason", parsed.skipped.length === 1 &&
+		parsed.skipped[0].reason === "ANIMATION_REPLAY_NOT_YET_VERIFIED");
 	assert("keyframed capture does not write values", keyframedParam._writes.length === 0);
 
 	pageCalls = [];
@@ -699,6 +771,222 @@
 	}).join(",") === "Gaussian Blur");
 
 	assert("icons include a library mark", typeof EffectIcons.library === "function");
+
+	assert("preset capability module loaded", typeof PresetCapability !== "undefined");
+	assert("production types include number boolean point", PresetCapability.isProductionType("number") &&
+		PresetCapability.isProductionType("boolean") && PresetCapability.isProductionType("point") &&
+		PresetCapability.isProductionType("angle"));
+	assert("color remains a production stub", PresetCapability.pickfxWriterSupportsType("color") === false);
+	assert("enum remains a production stub", PresetCapability.pickfxWriterSupportsType("enum") === false);
+
+	clipA = makeClip({
+		name: "Talking",
+		components: [
+			makeComponent("Motion", "AE.ADBE Motion", [
+				makeParam("Position", [0.5, 0.5]),
+				makeParam("Scale", 100),
+				makeParam("Rotation", 12)
+			]),
+			makeComponent("Opacity", "AE.ADBE Opacity", [makeParam("Opacity", 80)]),
+			makeComponent("Gaussian Blur", "AE.ADBE Gaussian Blur", [
+				makeParam("Blurriness", 12),
+				makeParam("Repeat Edge Pixels", true)
+			]),
+			makeComponent("S_Glow", "S_Glow", [makeParam("Brightness", 40)]),
+			makeComponent("Lumetri Color", "AE.ADBE Lumetri", [
+				makeParam("Exposure", 0.25),
+				makeParam("Contrast", 10)
+			])
+		]
+	});
+	installHostMocks([clipA]);
+	parsed = JSON.parse(PresetHost.listCapturableComponents());
+	assert("generic capture has no effect allowlist", parsed.ok === true && parsed.components.length === 5);
+	assert("motion is intrinsic and checkable", parsed.components[0].kind === "intrinsic" &&
+		parsed.components[0].captureStatus !== "unsupported" &&
+		parsed.components[0].supportedParameterCount >= 3);
+	assert("opacity is intrinsic and checkable", parsed.components[1].kind === "intrinsic" &&
+		parsed.components[1].captureStatus !== "unsupported" &&
+		parsed.components[1].supportedParameterCount >= 1);
+	assert("gaussian blur numbers and booleans capture", parsed.components[2].captureStatus === "full" &&
+		parsed.components[2].supportedParameterCount === 2);
+	assert("unknown third-party effect captures generically", parsed.components[3].displayName === "S_Glow" &&
+		parsed.components[3].captureStatus === "full");
+	assert("lumetri numeric parameters capture", parsed.components[4].supportedParameterCount >= 2);
+	assert("motion stays unchecked by default while remaining selectable",
+		PresetCapture.defaultChecked(parsed.components[0]) === false &&
+		PresetCapture.isReplayable(parsed.components[0]) === true);
+	assert("opacity stays unchecked by default while remaining selectable",
+		PresetCapture.defaultChecked(parsed.components[1]) === false &&
+		PresetCapture.isReplayable(parsed.components[1]) === true);
+	assert("effects stay checked by default", PresetCapture.defaultChecked(parsed.components[2]) === true);
+	assert("save requires a valid name and replayable selection",
+		PresetCapture.canSave("", parsed.components, { "2": true }) === false &&
+		PresetCapture.canSave("Look", parsed.components, { "0": false, "2": true }) === true &&
+		PresetCapture.canSave("Look", parsed.components, { "0": false }) === false);
+
+	parsed = JSON.parse(PresetHost.inspectPresetCaptureSupport());
+	row = parsed.components[2].parameters[0];
+	assert("parity diagnostic compares pickfx and preset capability", parsed.ok === true &&
+		row.displayName === "Blurriness" &&
+		row.pickfxRead === true &&
+		row.pickfxWrite === true &&
+		row.pickfxVerify === true &&
+		row.presetCapture === true &&
+		row.parityBug !== true);
+
+	classified = PresetCapability.classify(
+		makeParam("Blurriness", 12),
+		"Blurriness",
+		"",
+		"Gaussian Blur",
+		"AE.ADBE Gaussian Blur"
+	);
+	assert("capability parity keeps production number writes", classified.pickfxWrite === true &&
+		classified.presetCapture === true &&
+		classified.reason === "SUPPORTED");
+	classified = PresetCapability.classify(
+		makeParam("Fill", { r: 1, g: 0, b: 0 }),
+		"Fill",
+		"",
+		"Fill",
+		"AE.ADBE Fill"
+	);
+	assert("color stays unsupported because pickfx writer is a stub", classified.presetCapture === false &&
+		classified.reason === "UNSUPPORTED_TYPE" &&
+		classified.parityBug !== true);
+
+	controls = {
+		displayName: "Controls",
+		matchName: "",
+		properties: { numItems: 1 },
+		getValue: function () {
+			throw new Error("group");
+		}
+	};
+	controls.properties[0] = makeParam("Blurriness", 18);
+	clipA = makeClip({
+		name: "Talking",
+		components: [makeComponent("Gaussian Blur", "AE.ADBE Gaussian Blur", [controls])]
+	});
+	clipA.components[0].properties[0] = controls;
+	installHostMocks([clipA]);
+	parsed = JSON.parse(PresetHost.listCapturableComponents());
+	assert("controls groups are walked for nested leaves", parsed.components[0].supportedParameterCount === 1);
+
+	blurParam = makeParam("Position", [0.4, 0.6]);
+	blurParam.properties = { numItems: 2 };
+	blurParam.properties[0] = makeParam("X", 0.4);
+	blurParam.properties[1] = makeParam("Y", 0.6);
+	clipA = makeClip({
+		name: "Talking",
+		components: [makeComponent("Motion", "AE.ADBE Motion", [blurParam])]
+	});
+	installHostMocks([clipA]);
+	parsed = JSON.parse(PresetHost.captureComponent(
+		JSON.parse(PresetHost.listCapturableComponents()).session,
+		0,
+		0,
+		20
+	));
+	assert("point leaf with nested properties still captures the leaf", parsed.parameters.length === 1 &&
+		parsed.parameters[0].type === "point" &&
+		parsed.parameters[0].value[0] === 0.4);
+
+	qeOptions = {
+		mapCalls: [],
+		addCalls: [],
+		mutateOnAdd: true
+	};
+	clipA = makeClip({
+		name: "Talking",
+		components: [makeComponent("Motion", "AE.ADBE Motion", [makeParam("Scale", 100)])]
+	});
+	installHostMocks([clipA], qeOptions);
+	parsed = JSON.parse(PresetHost.applyPreset(PresetSchema.build({
+		name: "Order Look",
+		clock: 1,
+		token: "aa11bb",
+		components: [
+			{
+				order: 0,
+				kind: "effect",
+				displayName: "Lumetri Color",
+				matchName: "AE.ADBE Lumetri",
+				premiereName: "Lumetri Color",
+				parameters: [{ order: 0, displayName: "Exposure", type: "number", value: 0.5 }]
+			},
+			{
+				order: 1,
+				kind: "effect",
+				displayName: "Gaussian Blur",
+				matchName: "AE.ADBE Gaussian Blur",
+				premiereName: "Gaussian Blur",
+				parameters: [{ order: 0, displayName: "Blurriness", type: "number", value: 22 }]
+			}
+		]
+	}).preset));
+	assert("effect order apply does not alphabetize adds", qeOptions.addCalls.join(",") === "Lumetri Color,Gaussian Blur");
+	assert("clean-target apply verifies stored parameters", parsed.ok === true);
+
+	clipA = makeClip({
+		name: "Talking",
+		components: [makeComponent("Motion", "AE.ADBE Motion", [makeParam("Scale", 100)])]
+	});
+	installHostMocks([clipA]);
+	parsed = JSON.parse(PresetHost.applyPreset(PresetSchema.build({
+		name: "Motion Look",
+		clock: 1,
+		token: "cc22dd",
+		components: [{
+			order: 0,
+			kind: "intrinsic",
+			displayName: "Motion",
+			matchName: "AE.ADBE Motion",
+			parameters: [{ order: 0, displayName: "Scale", type: "number", value: 80 }]
+		}]
+	}).preset));
+	assert("motion intrinsic writes through production writer", parsed.ok === true &&
+		clipA.components[0].properties[0]._value === 80);
+
+	saved = PresetStore.save(samplePreset("Account A Look").preset, { fs: memoryFs(), userDataPath: "/tmp" });
+	assert("missing user id does not fall back to global storage", saved.ok === false &&
+		saved.reason === "PRESET_USER_SCOPE_UNAVAILABLE");
+
+	sharedFs = memoryFs();
+	saved = PresetStore.save(samplePreset("Account A Look", { token: "a1a1a1" }).preset, scopedStorage(USER_A, sharedFs));
+	assert("account a can save", saved.ok === true);
+	listed = PresetStore.list(scopedStorage(USER_B, sharedFs));
+	assert("account b cannot see account a presets", listed.ok === true && listed.presets.length === 0);
+	listed = PresetStore.list(scopedStorage(USER_A, sharedFs));
+	assert("account a still sees its own presets", listed.ok === true && listed.presets.length === 1);
+	accountIds = [];
+	if (PanelEntitlement.onAccountChange) {
+		PanelEntitlement.onAccountChange(function (id) {
+			accountIds.push(id);
+		});
+	}
+	PanelEntitlement.setCurrent({
+		sessionToken: "token-a",
+		userId: USER_A,
+		productAccess: true,
+		verifiedAt: Date.now()
+	});
+	PanelEntitlement.setCurrent({
+		sessionToken: "token-b",
+		userId: USER_B,
+		productAccess: true,
+		verifiedAt: Date.now()
+	});
+	assert("account switch notifies listeners", accountIds.join(",") === USER_A + "," + USER_B);
+	PanelEntitlement.onAccountChange(null);
+	PanelEntitlement.setCurrent(null);
+
+	app = previousApp;
+	qe = previousQE;
+	$._pickfx = previousPickfx;
+	$._pickfxQE = previousPickfxQE;
+	$._pickfxParameterResolver = previousResolver;
 
 	print("presets: " + ((passed + failed) - startCount) + " assertions");
 }());

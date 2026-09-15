@@ -15,7 +15,8 @@ var PresetSchema = (function () {
 	var INTRINSIC_DISPLAY = {
 		motion: true,
 		opacity: true,
-		"time remapping": true
+		"time remapping": true,
+		transform: true
 	};
 
 	function trim(value) {
@@ -191,6 +192,7 @@ var PresetSchema = (function () {
 				order: typeof raw.order === "number" ? raw.order : index,
 				displayName: displayName,
 				matchName: trim(raw.matchName),
+				parentName: trim(raw.parentName),
 				type: serialized.type,
 				value: serialized.value
 			}

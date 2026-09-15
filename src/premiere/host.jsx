@@ -4610,16 +4610,21 @@ $._pickfx = {
 	},
 
 	presetHostStatus: function () {
+		var cap = typeof $._pickfxPresetCapability !== "undefined" && $._pickfxPresetCapability.hostStatus
+			? $._pickfxPresetCapability.hostStatus()
+			: null;
 		return JSON.stringify({
 			ok: typeof $._pickfxPresetHost !== "undefined" &&
 				typeof $._pickfxPresetHost.listCapturableComponents === "function" &&
-				typeof $._pickfxPresetHost.applyPreset === "function",
+				typeof $._pickfxPresetHost.applyPreset === "function" &&
+				!(!cap || cap.ok === false),
 			host: true,
 			listCapturable: typeof $._pickfxPresetHost !== "undefined" &&
 				typeof $._pickfxPresetHost.listCapturableComponents === "function",
 			applyPreset: typeof $._pickfxPresetHost !== "undefined" &&
 				typeof $._pickfxPresetHost.applyPreset === "function",
-			presetHost: typeof $._pickfxPresetHost !== "undefined"
+			presetHost: typeof $._pickfxPresetHost !== "undefined",
+			capability: cap
 		});
 	},
 
@@ -4705,6 +4710,90 @@ $._pickfx = {
 				detail: String(e),
 				liveProbe: true,
 				preset: true
+			});
+		}
+	},
+
+	inspectPresetCaptureSupport: function () {
+		try {
+			if (typeof $._pickfxPresetHost === "undefined" || !$._pickfxPresetHost.inspectPresetCaptureSupport) {
+				return JSON.stringify({
+					ok: false,
+					reason: "WRITE_FAILED",
+					detail: "PresetHost is not loaded.",
+					diagnostic: true
+				});
+			}
+			return $._pickfxPresetHost.inspectPresetCaptureSupport();
+		} catch (e) {
+			return JSON.stringify({
+				ok: false,
+				reason: "WRITE_FAILED",
+				detail: String(e),
+				diagnostic: true
+			});
+		}
+	},
+
+	presetHostCapabilityStatus: function () {
+		try {
+			if (typeof $._pickfxPresetHost === "undefined" || !$._pickfxPresetHost.presetHostCapabilityStatus) {
+				return JSON.stringify({
+					ok: false,
+					reason: "PRESET_HOST_ENGINE_MISSING",
+					missing: ["presetHost"]
+				});
+			}
+			return $._pickfxPresetHost.presetHostCapabilityStatus();
+		} catch (e) {
+			return JSON.stringify({
+				ok: false,
+				reason: "WRITE_FAILED",
+				detail: String(e)
+			});
+		}
+	},
+
+	probePresetEffectCompatibility: function (effectName) {
+		try {
+			if (typeof $._pickfxPresetHost === "undefined" || !$._pickfxPresetHost.probePresetEffectCompatibility) {
+				return JSON.stringify({
+					ok: false,
+					reason: "WRITE_FAILED",
+					detail: "PresetHost is not loaded.",
+					liveProbe: true
+				});
+			}
+			return $._pickfxPresetHost.probePresetEffectCompatibility(effectName);
+		} catch (e) {
+			return JSON.stringify({
+				ok: false,
+				reason: "WRITE_FAILED",
+				detail: String(e),
+				liveProbe: true
+			});
+		}
+	},
+
+	probePresetRegistryCompatibility: function () {
+		try {
+			if (typeof $._pickfxPresetHost === "undefined" || !$._pickfxPresetHost.probePresetRegistryCompatibility) {
+				return JSON.stringify({
+					ok: false,
+					reason: "WRITE_FAILED",
+					detail: "PresetHost is not loaded.",
+					liveProbe: true,
+					diagnostic: true
+				});
+			}
+			return $._pickfxPresetHost.probePresetRegistryCompatibility();
+		} catch (e) {
+			return JSON.stringify({
+				ok: false,
+				reason: "WRITE_FAILED",
+				detail: String(e),
+				liveProbe: true,
+				diagnostic: true
 			});
 		}
 	},

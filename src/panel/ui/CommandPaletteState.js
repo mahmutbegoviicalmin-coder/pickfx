@@ -29,6 +29,9 @@ var CommandPaletteState = (function () {
 		"SETVALUE",
 		"USEDQE",
 		"PRESET_STORAGE_UNAVAILABLE",
+		"PRESET_USER_SCOPE_UNAVAILABLE",
+		"PRESET_CAPABILITY_PARITY_BUG",
+		"ANIMATION_REPLAY_NOT_YET_VERIFIED",
 		"CAPTURE_REQUIRES_SINGLE_CLIP",
 		"CAPTURE_SOURCE_CHANGED",
 		"PRESET_EFFECT_UNAVAILABLE",
@@ -310,11 +313,13 @@ var CommandPaletteState = (function () {
 				footer: "Clip changed"
 			};
 		}
-		if (reason === "PRESET_STORAGE_UNAVAILABLE") {
+		if (reason === "PRESET_STORAGE_UNAVAILABLE" || reason === "PRESET_USER_SCOPE_UNAVAILABLE") {
 			return {
-				title: "Couldn't save preset",
-				detail: "PickFX couldn’t reach the presets folder.",
-				footer: "Couldn't save preset"
+				title: reason === "PRESET_USER_SCOPE_UNAVAILABLE" ? "Sign in to save presets" : "Couldn't save preset",
+				detail: reason === "PRESET_USER_SCOPE_UNAVAILABLE"
+					? "Presets are saved to your PickFX account on this computer."
+					: "PickFX couldn’t reach the presets folder.",
+				footer: reason === "PRESET_USER_SCOPE_UNAVAILABLE" ? "Sign in to save presets" : "Couldn't save preset"
 			};
 		}
 		if (reason === "PRESET_EFFECT_UNAVAILABLE") {

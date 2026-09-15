@@ -947,6 +947,9 @@
 			"/src/core/EnumParameterWriter.js",
 			"/src/core/StringParameterWriter.js",
 			"/src/core/UniversalParameterWriter.js",
+			"/src/core/ParameterResolver.js",
+			"/src/core/ParameterWriter.js",
+			"/src/core/PresetCapability.js",
 			"/src/core/PresetSchema.js",
 			"/src/core/PresetHost.js",
 			"/src/core/NumericCandidateScan.js",
@@ -1703,7 +1706,11 @@
 	}
 
 	function presetStoreOptions() {
-		return { csInterface: csInterface };
+		var userId = "";
+		if (typeof PanelEntitlement !== "undefined" && PanelEntitlement.currentUserId) {
+			userId = PanelEntitlement.currentUserId();
+		}
+		return { csInterface: csInterface, userId: userId };
 	}
 
 	function reloadPresetLibrary() {
@@ -1720,6 +1727,15 @@
 		}
 		presetLibrary = listed && listed.presets ? listed.presets : [];
 		return listed || { ok: true, presets: presetLibrary, ignored: [] };
+	}
+
+	if (typeof PanelEntitlement !== "undefined" && PanelEntitlement.onAccountChange) {
+		PanelEntitlement.onAccountChange(function () {
+			reloadPresetLibrary();
+			if (presetViewMode === "library") {
+				renderPresetLibrary();
+			}
+		});
 	}
 
 	function isPresetsViewOpen() {
@@ -1975,8 +1991,16 @@
 			if (component.captureStatus === "unsupported" || component.skippedCount) {
 				skippedLine = document.createElement("span");
 				skippedLine.className = "result-sub preset-unsupported";
-				skippedLine.textContent = component.limitation ||
-					(component.skippedCount ? component.skippedCount + " skipped" : "");
+				if (component.skippedReasons && component.skippedReasons.length &&
+						component.captureStatus !== "unsupported") {
+					skippedLine.textContent = component.skippedReasons.map(function (row) {
+						return (row.displayName || "Parameter") + ": " + (row.reason || "");
+					}).join(" · ");
+				} else {
+					skippedLine.textContent = component.limitation ||
+						(component.skippedCount ? component.skippedCount + " skipped" : "");
+				}
+				row.appendChild(skippedLine);
 			}
 			presetsBody.appendChild(row);
 		}
@@ -1998,10 +2022,15 @@
 		saveBtn.textContent = "Save Preset";
 		saveBtn.id = "preset-save-btn";
 		selectedIndexes = selectedCaptureIndexes();
-		saveBtn.disabled = !selectedIndexes.length;
+		saveBtn.disabled = !(typeof PresetCapture !== "undefined" && PresetCapture.canSave
+			? PresetCapture.canSave(captureState.name, captureState.components, captureState.selected)
+			: selectedIndexes.length);
 		presetsBody.appendChild(saveBtn);
 		input.addEventListener("input", function () {
 			captureState.name = input.value;
+			saveBtn.disabled = !(typeof PresetCapture !== "undefined" && PresetCapture.canSave
+				? PresetCapture.canSave(captureState.name, captureState.components, captureState.selected)
+				: selectedIndexes.length && PresetSchema.normalizeName(captureState.name));
 		});
 	}
 
@@ -2012,8 +2041,11 @@
 			return indexes;
 		}
 		for (i = 0; i < captureState.components.length; i++) {
-			if (captureState.selected[String(i)] &&
-					captureState.components[i].captureStatus !== "unsupported") {
+			if (captureState.selected[String(i)] && (
+					typeof PresetCapture !== "undefined" && PresetCapture.isReplayable
+						? PresetCapture.isReplayable(captureState.components[i])
+						: captureState.components[i].captureStatus !== "unsupported"
+				)) {
 				indexes.push(i);
 			}
 		}

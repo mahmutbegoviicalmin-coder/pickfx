@@ -97,7 +97,8 @@ var PanelEntitlement = (function () {
 			plan: raw.plan || null,
 			email: raw.email || null,
 			expiresAt: raw.expiresAt || null,
-			requiresPanelAuthorization: raw.requiresPanelAuthorization === true
+			requiresPanelAuthorization: raw.requiresPanelAuthorization === true,
+			userId: raw.userId || null
 		};
 	}
 
@@ -204,11 +205,13 @@ var PanelEntitlement = (function () {
 	}
 
 	function loadCachedSession(storage, csInterface) {
+		var previousId = currentUserId();
 		var fromFile = readSessionFile(csInterface);
 		var raw;
 		if (fromFile) {
 			current = fromFile;
 			writeStorage(storage || (typeof localStorage !== "undefined" ? localStorage : null), SESSION_KEY, JSON.stringify(fromFile));
+			emitAccountChange(previousId);
 			return fromFile;
 		}
 		raw = readStorage(storage || (typeof localStorage !== "undefined" ? localStorage : null), SESSION_KEY);
@@ -216,29 +219,36 @@ var PanelEntitlement = (function () {
 			return null;
 		}
 		try {
-			return trustedRecord(JSON.parse(raw));
+			current = trustedRecord(JSON.parse(raw));
+			emitAccountChange(previousId);
+			return current;
 		} catch (ignoreParse) {
 			return null;
 		}
 	}
 
 	function saveCachedSession(record, storage, csInterface) {
+		var previousId = currentUserId();
 		storage = storage || (typeof localStorage !== "undefined" ? localStorage : null);
 		current = trustedRecord(record);
 		if (!current) {
 			writeStorage(storage, SESSION_KEY, null);
 			writeSessionFile(csInterface, null);
+			emitAccountChange(previousId);
 			return null;
 		}
 		writeStorage(storage, SESSION_KEY, JSON.stringify(current));
 		writeSessionFile(csInterface, current);
+		emitAccountChange(previousId);
 		return current;
 	}
 
 	function clearCachedSession(storage, csInterface) {
+		var previousId = currentUserId();
 		current = null;
 		writeStorage(storage || (typeof localStorage !== "undefined" ? localStorage : null), SESSION_KEY, null);
 		writeSessionFile(csInterface, null);
+		emitAccountChange(previousId);
 	}
 
 	function randomInstallationId() {
@@ -380,7 +390,11 @@ var PanelEntitlement = (function () {
 			expiresAt: payload.session && payload.session.expires_at
 				? payload.session.expires_at
 				: payload.expires_at,
-			requiresPanelAuthorization: entitlement.requiresPanelAuthorization === true
+			requiresPanelAuthorization: entitlement.requiresPanelAuthorization === true,
+			userId: (payload.user && payload.user.id) ||
+				(payload.session && payload.session.user_id) ||
+				payload.userId ||
+				null
 		});
 	}
 
@@ -407,8 +421,33 @@ var PanelEntitlement = (function () {
 		return current;
 	}
 
+	function currentUserId() {
+		if (current && current.userId) {
+			return String(current.userId);
+		}
+		return "";
+	}
+
+	var accountListener = null;
+
+	function onAccountChange(fn) {
+		accountListener = typeof fn === "function" ? fn : null;
+	}
+
+	function emitAccountChange(previousId) {
+		var nextId = currentUserId();
+		if (!accountListener || String(previousId || "") === nextId) {
+			return;
+		}
+		try {
+			accountListener(nextId);
+		} catch (ignoreListener) {}
+	}
+
 	function setCurrent(record) {
+		var previousId = currentUserId();
 		current = trustedRecord(record);
+		emitAccountChange(previousId);
 		return current;
 	}
 
@@ -442,6 +481,8 @@ var PanelEntitlement = (function () {
 		currentState: currentState,
 		productAccess: productAccess,
 		currentRecord: currentRecord,
+		currentUserId: currentUserId,
+		onAccountChange: onAccountChange,
 		setCurrent: setCurrent
 	};
 }());

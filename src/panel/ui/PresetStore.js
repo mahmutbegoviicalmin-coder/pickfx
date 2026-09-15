@@ -1,6 +1,7 @@
 var PresetStore = (function () {
-	var DIRECTORY = "PickFX/presets";
+	var DIRECTORY = "PickFX/users";
 	var ERR_OK = 0;
+	var USER_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 	function trim(value) {
 		return String(value || "").replace(/^\s+|\s+$/g, "");
@@ -49,8 +50,29 @@ var PresetStore = (function () {
 		return String(root || "").replace(/\\/g, "/");
 	}
 
-	function presetsDirectory(csInterface) {
-		return joinPath(userDataRoot(csInterface), DIRECTORY);
+	function isSafeUserId(userId) {
+		return USER_ID_PATTERN.test(String(userId || ""));
+	}
+
+	function scopedUserId(options) {
+		var userId = options && options.userId;
+		if (isSafeUserId(userId)) {
+			return String(userId);
+		}
+		return "";
+	}
+
+	function presetsDirectory(csInterface, options) {
+		var userId = scopedUserId(options);
+		var root;
+		if (!userId) {
+			return "";
+		}
+		if (options && options.directory) {
+			return String(options.directory).replace(/\\/g, "/");
+		}
+		root = options && options.userDataPath ? options.userDataPath : userDataRoot(csInterface);
+		return joinPath(root, DIRECTORY + "/" + userId + "/presets");
 	}
 
 	function fileNameForId(id) {
@@ -61,8 +83,8 @@ var PresetStore = (function () {
 		return id + ".json";
 	}
 
-	function filePathForId(csInterface, id) {
-		var dir = presetsDirectory(csInterface);
+	function filePathForId(csInterface, id, options) {
+		var dir = presetsDirectory(csInterface, options);
 		var name = fileNameForId(id);
 		if (!dir || !name) {
 			return "";
@@ -78,6 +100,14 @@ var PresetStore = (function () {
 		var fs = fsApi(options);
 		var csInterface = options && options.csInterface;
 		var root = options && options.userDataPath ? options.userDataPath : userDataRoot(csInterface);
+		var userId = scopedUserId(options);
+		if (!userId) {
+			return {
+				ok: false,
+				reason: "PRESET_USER_SCOPE_UNAVAILABLE",
+				detail: "PickFX cannot save presets without a signed-in account."
+			};
+		}
 		if (!fs || typeof fs.writeFile !== "function" || typeof fs.readFile !== "function") {
 			return {
 				ok: false,
@@ -94,7 +124,8 @@ var PresetStore = (function () {
 		}
 		return {
 			ok: true,
-			directory: (options && options.directory) || joinPath(root, DIRECTORY)
+			userId: userId,
+			directory: presetsDirectory(csInterface, options)
 		};
 	}
 
@@ -116,13 +147,23 @@ var PresetStore = (function () {
 		var status = storageStatus(options);
 		var fs = fsApi(options);
 		var dir;
-		var parent;
+		var root;
+		var userId;
 		if (!status.ok) {
 			return status;
 		}
 		dir = status.directory;
-		parent = dir.replace(/\/presets$/, "");
-		mkdir(fs, parent);
+		root = (options && options.userDataPath) || "";
+		userId = status.userId;
+		if (root && userId && !(options && options.directory)) {
+			mkdir(fs, joinPath(root, "PickFX"));
+			mkdir(fs, joinPath(root, "PickFX/users"));
+			mkdir(fs, joinPath(root, "PickFX/users/" + userId));
+		} else {
+			mkdir(fs, dir.replace(/\/presets$/, ""));
+			mkdir(fs, dir.replace(/\/presets$/, "").replace(/\/[^/]+$/, ""));
+		}
+		mkdir(fs, dir.replace(/\/presets$/, ""));
 		mkdir(fs, dir);
 		return status;
 	}
@@ -308,7 +349,7 @@ var PresetStore = (function () {
 		if (!status.ok) {
 			return {
 				ok: false,
-				reason: "PRESET_STORAGE_UNAVAILABLE",
+				reason: status.reason || "PRESET_STORAGE_UNAVAILABLE",
 				detail: status.detail || "PickFX cannot save presets in this environment."
 			};
 		}
@@ -363,7 +404,7 @@ var PresetStore = (function () {
 		if (!status.ok) {
 			return {
 				ok: false,
-				reason: "PRESET_STORAGE_UNAVAILABLE",
+				reason: status.reason || "PRESET_STORAGE_UNAVAILABLE",
 				detail: status.detail
 			};
 		}
@@ -391,7 +432,9 @@ var PresetStore = (function () {
 		delete: remove,
 		findByName: findByName,
 		fileNameForId: fileNameForId,
-		presetsDirectory: presetsDirectory
+		filePathForId: filePathForId,
+		presetsDirectory: presetsDirectory,
+		isSafeUserId: isSafeUserId
 	};
 }());
 

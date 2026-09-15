@@ -1285,6 +1285,20 @@ var PremiereBridge = (function () {
 			if (!status || !status.host) {
 				loads.push("/src/premiere/host.jsx");
 			}
+			loads.push("/src/core/ParameterResolver.js");
+			loads.push("/src/core/ParameterWriter.js");
+			loads.push("/src/core/ParameterValueType.js");
+			loads.push("/src/core/PointValue.js");
+			loads.push("/src/core/ParameterReadBack.js");
+			loads.push("/src/core/NumericCandidateClassifier.js");
+			loads.push("/src/core/ParameterCapability.js");
+			loads.push("/src/core/ConfirmedParameterWrites.js");
+			loads.push("/src/core/PointParameterWriter.js");
+			loads.push("/src/core/NumberParameterWriter.js");
+			loads.push("/src/core/BooleanParameterWriter.js");
+			loads.push("/src/core/UniversalParameterResolver.js");
+			loads.push("/src/core/UniversalParameterWriter.js");
+			loads.push("/src/core/PresetCapability.js");
 			loads.push("/src/core/PresetSchema.js");
 			loads.push("/src/core/PresetHost.js");
 			loadNext(0);
@@ -1351,6 +1365,26 @@ var PremiereBridge = (function () {
 
 	function probeDuplicatePresetEffectInsert(csInterface, done) {
 		withPresetHost(csInterface, "$._pickfx.probeDuplicatePresetEffectInsert()", done);
+	}
+
+	function inspectPresetCaptureSupport(csInterface, done) {
+		withPresetHost(csInterface, "$._pickfx.inspectPresetCaptureSupport()", done);
+	}
+
+	function presetHostCapabilityStatus(csInterface, done) {
+		withPresetHost(csInterface, "$._pickfx.presetHostCapabilityStatus()", done);
+	}
+
+	function probePresetEffectCompatibility(csInterface, effectName, done) {
+		withPresetHost(
+			csInterface,
+			"$._pickfx.probePresetEffectCompatibility(" + JSON.stringify(effectName || "") + ")",
+			done
+		);
+	}
+
+	function probePresetRegistryCompatibility(csInterface, done) {
+		withPresetHost(csInterface, "$._pickfx.probePresetRegistryCompatibility()", done);
 	}
 
 	function runActionScript(spec) {
@@ -1639,6 +1673,10 @@ var PremiereBridge = (function () {
 		captureComponent: captureComponent,
 		applyPickFXPreset: applyPickFXPreset,
 		probeDuplicatePresetEffectInsert: probeDuplicatePresetEffectInsert,
+		inspectPresetCaptureSupport: inspectPresetCaptureSupport,
+		presetHostCapabilityStatus: presetHostCapabilityStatus,
+		probePresetEffectCompatibility: probePresetEffectCompatibility,
+		probePresetRegistryCompatibility: probePresetRegistryCompatibility,
 		findTypedCandidates: findTypedCandidates
 	};
 }());

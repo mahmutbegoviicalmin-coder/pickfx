@@ -130,20 +130,8 @@ $._pickfxParameterWriter = {
 			);
 		}
 
-		try {
-			readBack = param.getValue();
-		} catch (readErr) {
-			return $._pickfxParameterWriter.fail(
-				effectName,
-				parameterName,
-				"getValue() after setValue threw: " + String(readErr),
-				log
-			);
-		}
-
-		$._pickfxParameterWriter.appendLog(log, "readBack value=" + readBack + " typeof=" + (typeof readBack));
-
-		verified = $._pickfxParameterWriter.verifyWrite("number", value, readBack, null);
+		verified = $._pickfxParameterWriter.readBackVerified(param, "number", value, null, log);
+		readBack = verified.actual;
 		if (!verified.ok) {
 			$._pickfxParameterWriter.appendLog(log, "verification failed requested=" + value + " actual=" + readBack);
 			return {
@@ -158,6 +146,8 @@ $._pickfxParameterWriter = {
 				readBack: readBack,
 				type: "number",
 				method: methodUsed,
+				readBackAttempts: verified.readBackAttempts,
+				staleBeforeVerify: verified.staleBeforeVerify === true,
 				log: log
 			};
 		}
@@ -176,6 +166,8 @@ $._pickfxParameterWriter = {
 			type: "number",
 			method: methodUsed,
 			methodUsed: methodUsed,
+			readBackAttempts: verified.readBackAttempts,
+			staleBeforeVerify: verified.staleBeforeVerify === true,
 			log: log
 		};
 	},
@@ -210,10 +202,70 @@ $._pickfxParameterWriter = {
 				ok: $._pickfxParameterWriter.enumMatches(actual, requested, expectedLabel)
 			};
 		}
+		if (kind === "point") {
+			if (typeof PointValue !== "undefined" && PointValue.verify) {
+				return PointValue.verify(requested, actual);
+			}
+			return { ok: false };
+		}
 		if (typeof requested === "number" && typeof actual === "number" && isFinite(requested) && isFinite(actual)) {
 			return { ok: requested === actual || Math.abs(requested - actual) <= 0.0001 };
 		}
 		return { ok: requested === actual };
+	},
+
+	readBackApi: function () {
+		if (typeof $ !== "undefined" && $._pickfxParameterReadBack) {
+			return $._pickfxParameterReadBack;
+		}
+		if (typeof ParameterReadBack !== "undefined") {
+			return ParameterReadBack;
+		}
+		return null;
+	},
+
+	readBackVerified: function (param, kind, requested, expectedLabel, log) {
+		var api = $._pickfxParameterWriter.readBackApi();
+		var result;
+		var verified;
+		var readBack;
+		if (api && typeof api.verifyWithRetry === "function") {
+			result = api.verifyWithRetry(param, requested, function (wanted, actual) {
+				return $._pickfxParameterWriter.verifyWrite(kind, wanted, actual, expectedLabel);
+			});
+			if (log) {
+				$._pickfxParameterWriter.appendLog(
+					log,
+					"readBack attempts=" + result.readBackAttempts +
+						" stale=" + result.staleBeforeVerify +
+						" value=" + result.value
+				);
+			}
+			return {
+				ok: result.ok === true,
+				actual: result.value,
+				readBackAttempts: result.readBackAttempts,
+				staleBeforeVerify: result.staleBeforeVerify === true,
+				error: result.error
+			};
+		}
+		try {
+			readBack = param.getValue();
+		} catch (readErr) {
+			return {
+				ok: false,
+				error: String(readErr),
+				readBackAttempts: 1,
+				staleBeforeVerify: false
+			};
+		}
+		verified = $._pickfxParameterWriter.verifyWrite(kind, requested, readBack, expectedLabel);
+		return {
+			ok: !!(verified && verified.ok),
+			actual: readBack,
+			readBackAttempts: 1,
+			staleBeforeVerify: false
+		};
 	},
 
 	coerceBoolean: function (value) {
@@ -356,9 +408,9 @@ $._pickfxParameterWriter = {
 			);
 		}
 
-		try {
-			readBack = param.getValue();
-		} catch (readErr) {
+		verified = $._pickfxParameterWriter.readBackVerified(param, kind, value, expectedLabel, log);
+		readBack = verified.actual;
+		if (!verified.ok) {
 			return $._pickfxParameterWriter.typedFail(
 				effectName,
 				parameterName,
@@ -366,32 +418,6 @@ $._pickfxParameterWriter = {
 				"Value could not be verified.",
 				log
 			);
-		}
-
-		$._pickfxParameterWriter.appendLog(log, "readBack value=" + readBack + " typeof=" + (typeof readBack));
-
-		if (kind === "boolean") {
-			verified = $._pickfxParameterWriter.verifyWrite("boolean", value, readBack, expectedLabel);
-			if (!verified.ok) {
-				return $._pickfxParameterWriter.typedFail(
-					effectName,
-					parameterName,
-					"VALUE_NOT_VERIFIED",
-					"Value could not be verified.",
-					log
-				);
-			}
-		} else {
-			verified = $._pickfxParameterWriter.verifyWrite("enum", value, readBack, expectedLabel);
-			if (!verified.ok) {
-				return $._pickfxParameterWriter.typedFail(
-					effectName,
-					parameterName,
-					"VALUE_NOT_VERIFIED",
-					"Value could not be verified.",
-					log
-				);
-			}
 		}
 
 		return {
@@ -407,7 +433,127 @@ $._pickfxParameterWriter = {
 			type: kind,
 			method: write.methodUsed,
 			methodUsed: write.methodUsed,
+			readBackAttempts: verified.readBackAttempts,
+			staleBeforeVerify: verified.staleBeforeVerify === true,
 			log: log
+		};
+	},
+
+	writeResolved: function (param, value, kind, parameterName) {
+		var wanted = String(kind || "number");
+		var writeValue = value;
+		var setResult;
+		var methodUsed;
+		var verified;
+		var adapted;
+		var original;
+		if (!param) {
+			return {
+				ok: false,
+				reason: "PARAMETER_NOT_FOUND",
+				parameter: String(parameterName || ""),
+				type: wanted
+			};
+		}
+		if (wanted === "color" || wanted === "enum" || wanted === "string") {
+			return {
+				ok: false,
+				reason: "UNSUPPORTED_TYPE",
+				parameter: String(parameterName || ""),
+				type: wanted,
+				detail: "PickFX does not have a production-verified writer for this type."
+			};
+		}
+		if (wanted === "point") {
+			if (typeof PointValue === "undefined") {
+				return {
+					ok: false,
+					reason: "UNSUPPORTED_TYPE",
+					parameter: String(parameterName || ""),
+					type: "point",
+					detail: "PointValue is not loaded."
+				};
+			}
+			try {
+				original = param.getValue();
+			} catch (readErr) {
+				return {
+					ok: false,
+					reason: "READ_FAILED",
+					parameter: String(parameterName || ""),
+					type: "point",
+					detail: String(readErr)
+				};
+			}
+			adapted = PointValue.toWriteValue
+				? PointValue.toWriteValue(original, value)
+				: PointValue.normalize(value);
+			if (!adapted || adapted.ok !== true) {
+				return {
+					ok: false,
+					reason: (adapted && adapted.reason) || "INVALID_VALUE",
+					parameter: String(parameterName || ""),
+					type: "point"
+				};
+			}
+			writeValue = adapted.value;
+		}
+		methodUsed = "setValue(value, true)";
+		try {
+			if (typeof param.setValue !== "function") {
+				return {
+					ok: false,
+					reason: "NOT_WRITABLE",
+					parameter: String(parameterName || ""),
+					type: wanted
+				};
+			}
+			setResult = param.setValue(writeValue, true);
+		} catch (setTwoErr) {
+			methodUsed = "setValue(value)";
+			try {
+				setResult = param.setValue(writeValue);
+			} catch (setOneErr) {
+				return {
+					ok: false,
+					reason: "WRITE_FAILED",
+					parameter: String(parameterName || ""),
+					type: wanted,
+					detail: String(setOneErr)
+				};
+			}
+		}
+		if (setResult === false) {
+			return {
+				ok: false,
+				reason: "WRITE_FAILED",
+				parameter: String(parameterName || ""),
+				type: wanted,
+				detail: methodUsed + " returned false."
+			};
+		}
+		verified = $._pickfxParameterWriter.readBackVerified(
+			param,
+			wanted === "angle" ? "number" : wanted,
+			writeValue,
+			"",
+			[]
+		);
+		if (!verified || !verified.ok) {
+			return {
+				ok: false,
+				reason: "VALUE_NOT_VERIFIED",
+				parameter: String(parameterName || ""),
+				type: wanted,
+				verified: false
+			};
+		}
+		return {
+			ok: true,
+			verified: true,
+			parameter: String(parameterName || ""),
+			type: wanted,
+			methodUsed: methodUsed
 		};
 	}
 };

@@ -65,17 +65,39 @@ var PresetCapture = (function () {
 		var skipped = component && typeof component.skippedCount === "number"
 			? component.skippedCount
 			: 0;
-		var line = supported + (supported === 1 ? " supported parameter" : " supported parameters");
+		var line = supported + (supported === 1 ? " parameter" : " parameters");
 		if (component && component.kind === "intrinsic") {
-			return "Built-in component";
+			return "Built-in · " + supported + (supported === 1 ? " parameter" : " parameters");
 		}
 		if (component && (component.captureStatus === "unsupported" || component.kind === "unsupported")) {
 			return component.limitation || "Cannot reproduce safely";
 		}
 		if (skipped) {
-			return line + " · " + skipped + " skipped";
+			return supported + " supported · " + skipped + " skipped";
 		}
 		return line;
+	}
+
+	function isReplayable(component) {
+		return !!(component && component.captureStatus !== "unsupported" &&
+			component.kind !== "unsupported" &&
+			((typeof component.supportedParameterCount === "number" && component.supportedParameterCount > 0) ||
+				(component.parameters && component.parameters.length)));
+	}
+
+	function canSave(name, components, selected) {
+		var api = schema();
+		var normalized = api ? api.normalizeName(name) : String(name || "").replace(/^\s+|\s+$/g, "");
+		var i;
+		if (!normalized) {
+			return false;
+		}
+		for (i = 0; i < (components || []).length; i++) {
+			if (selected && selected[String(i)] && isReplayable(components[i])) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	function pageComponent(csInterface, session, componentIndex, offset, collected, skippedCollected, done) {
@@ -202,6 +224,8 @@ var PresetCapture = (function () {
 		summary: summary,
 		captureStatusCopy: captureStatusCopy,
 		parameterLine: parameterLine,
+		isReplayable: isReplayable,
+		canSave: canSave,
 		listComponents: listComponents,
 		captureComponents: captureComponents,
 		assemble: assemble
