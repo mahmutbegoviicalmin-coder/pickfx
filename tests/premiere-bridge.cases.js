@@ -637,7 +637,7 @@
 	assertEq("debug without JSON reports JSON_UNAVAILABLE", payload.reason, "JSON_UNAVAILABLE");
 	assert("debug without JSON does not claim host.jsx is missing", String(payload.exactError || payload.detail || "").indexOf("host.jsx") === -1);
 
-	assert("bridge exposes runtime version", PremiereBridge.PRESET_RUNTIME_VERSION === "json2-extendscript-v1");
+	assert("bridge exposes runtime version", PremiereBridge.PRESET_RUNTIME_VERSION === "es3-presets-v2");
 	assert("bridge exposes module list", PremiereBridge.PRESET_HOST_MODULES.length >= 12);
 	assert("bridge ships json2 polyfill path", PremiereBridge.JSON_POLYFILL_PATH === "/src/premiere/json2.js");
 	if (typeof fs !== "undefined" && typeof path !== "undefined" && typeof __pickfxRoot !== "undefined") {

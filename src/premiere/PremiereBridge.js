@@ -1147,7 +1147,7 @@ var PremiereBridge = (function () {
 		return String(root || "").replace(/\\/g, "/");
 	}
 
-	var PRESET_RUNTIME_VERSION = "json2-extendscript-v1";
+	var PRESET_RUNTIME_VERSION = "es3-presets-v2";
 	var JSON_POLYFILL_PATH = "/src/premiere/json2.js";
 	var JSON_READY_TOKEN = "JSON_READY";
 	var JSON_MISSING_TOKEN = "JSON_MISSING";
@@ -1522,7 +1522,7 @@ var PremiereBridge = (function () {
 				pingPresetHost(csInterface, function (after) {
 					if (after && after.ok) {
 						after.hostStatusBefore = hostBefore;
-						after.hostStatusAfter = after;
+						after.hostStatusAfter = JSON.parse(JSON.stringify(after));
 						done(after);
 						return;
 					}

@@ -27,16 +27,16 @@ try {
 		$._pickfxJsonPolyfill = {
 			ready: typeof JSON !== "undefined" && !!JSON &&
 				typeof JSON.parse === "function" && typeof JSON.stringify === "function",
-			native: false
+			"native": false
 		};
 	} else {
-		$._pickfxJsonPolyfill = { ready: true, native: true };
+		$._pickfxJsonPolyfill = { ready: true, "native": true };
 	}
 } catch (pickfxJson2LoadError) {
 	$._pickfxJsonPolyfill = {
 		ready: typeof JSON !== "undefined" && !!JSON &&
 			typeof JSON.parse === "function" && typeof JSON.stringify === "function",
-		native: false,
+		"native": false,
 		error: String(pickfxJson2LoadError)
 	};
 }

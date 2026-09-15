@@ -4,7 +4,7 @@ var PresetSchema = (function () {
 	var SUPPORTED_TYPES = {
 		number: true,
 		angle: true,
-		boolean: true,
+		"boolean": true,
 		point: true
 	};
 	var INTRINSIC = {

@@ -1,9 +1,9 @@
 var PresetCapability = (function () {
-	var RUNTIME_VERSION = "json2-extendscript-v1";
+	var RUNTIME_VERSION = "es3-presets-v2";
 	var PRODUCTION_TYPES = {
 		number: true,
 		angle: true,
-		boolean: true,
+		"boolean": true,
 		point: true
 	};
 
@@ -61,7 +61,7 @@ var PresetCapability = (function () {
 		return {
 			number: true,
 			angle: true,
-			boolean: true,
+			"boolean": true,
 			point: true
 		};
 	}
