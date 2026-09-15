@@ -876,6 +876,7 @@
 	}
 
 	function loadHost(done) {
+		evalHostFile("/src/premiere/json2.js", function () {
 		evalHostFile("/src/premiere/host.jsx", function (hostOk, hostPath) {
 			if (!hostOk) {
 				showDebugJson({
@@ -931,6 +932,7 @@
 																evalHostFile("/src/core/ClipParameterWriter.js", function (clipOk) {
 																	evalHostFile("/src/core/MotionWriteTest.js", function (motionWriteOk) {
 		var extraHost = [
+			"/src/premiere/json2.js",
 			"/src/core/ParameterReadBack.js",
 			"/src/core/ConfirmedParameterWrites.js",
 			"/src/core/KeyframeEngine.js",
@@ -1091,6 +1093,7 @@
 					});
 				});
 			});
+		});
 		});
 	}
 
@@ -1713,6 +1716,14 @@
 		return { csInterface: csInterface, userId: userId };
 	}
 
+	function captureSaveOptions(replaceId) {
+		var options = presetStoreOptions();
+		if (replaceId) {
+			options.replaceId = replaceId;
+		}
+		return options;
+	}
+
 	function reloadPresetLibrary() {
 		var listed;
 		if (typeof PresetStore === "undefined" || !PresetStore.list) {
@@ -2099,10 +2110,7 @@
 				renderCaptureForm();
 				return;
 			}
-			saved = PresetStore.save(built.preset, {
-				csInterface: csInterface,
-				replaceId: replaceId
-			});
+			saved = PresetStore.save(built.preset, captureSaveOptions(replaceId));
 			if (!saved.ok && saved.reason === "NAME_CONFLICT") {
 				captureState.conflict = saved;
 				renderCaptureForm();

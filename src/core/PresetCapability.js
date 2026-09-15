@@ -1,5 +1,5 @@
 var PresetCapability = (function () {
-	var RUNTIME_VERSION = "24b6bf1-presets-parity-v1";
+	var RUNTIME_VERSION = "json2-extendscript-v1";
 	var PRODUCTION_TYPES = {
 		number: true,
 		angle: true,

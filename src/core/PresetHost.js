@@ -4,7 +4,7 @@ var PresetHost = (function () {
 	var MAX_RESULT_BYTES = 30000;
 	var MAX_CLIP_FAILURES = 3;
 	var MAX_FAILURE_CHARS = 160;
-	var RUNTIME_VERSION = "24b6bf1-presets-parity-v1";
+	var RUNTIME_VERSION = "json2-extendscript-v1";
 
 	function schema() {
 		if (typeof PresetSchema !== "undefined") {

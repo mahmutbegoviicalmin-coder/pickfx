@@ -430,7 +430,7 @@
 			assert("host bootstrap exposes runtime marker", bootstrapSrc.indexOf("2026-08-22-RUNTIME-VERIFY-01") !== -1);
 			assert("research host exposes runtime marker", hostSrc.indexOf("2026-08-22-RUNTIME-VERIFY-01") !== -1);
 			assert("panel exposes runtime marker", panelSrc.indexOf("2026-08-22-RUNTIME-VERIFY-01") !== -1);
-			assert("panel cache-busts current implementation", panelHtml.indexOf("panel.js?v=24b6bf1-presets-parity-v1") !== -1);
+			assert("panel cache-busts current implementation", panelHtml.indexOf("panel.js?v=json2-extendscript-v1") !== -1);
 			assert("probe distinguishes file not found", hostSrc.indexOf('"file_not_found"') !== -1);
 			assert("probe distinguishes file read failure", hostSrc.indexOf('"file_read_failed"') !== -1);
 			assert("probe distinguishes evaluation failure", hostSrc.indexOf('"evaluation_failed"') !== -1);

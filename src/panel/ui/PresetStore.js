@@ -129,42 +129,112 @@ var PresetStore = (function () {
 		};
 	}
 
-	function mkdir(fs, path) {
+	function fsErr(result) {
+		if (result && typeof result.err === "number") {
+			return result.err;
+		}
+		return -1;
+	}
+
+	function directoryExists(fs, path) {
+		var result;
 		if (!path || !fs) {
 			return false;
 		}
 		try {
-			if (typeof fs.makedir === "function") {
-				fs.makedir(path);
+			if (typeof fs.stat === "function") {
+				result = fs.stat(path);
+				if (fsErr(result) === ERR_OK && result.data) {
+					if (result.data.isDirectory === true) {
+						return true;
+					}
+					if (typeof result.data.isDirectory === "function" && result.data.isDirectory()) {
+						return true;
+					}
+				}
 			}
-			return true;
-		} catch (ignore) {
+			if (typeof fs.readdir === "function") {
+				result = fs.readdir(path);
+				if (fsErr(result) === ERR_OK) {
+					return true;
+				}
+			}
+		} catch (ignoreStat) {}
+		return false;
+	}
+
+	function mkdir(fs, path) {
+		var result;
+		if (!path || !fs || typeof fs.makedir !== "function") {
 			return false;
 		}
+		if (directoryExists(fs, path)) {
+			return true;
+		}
+		try {
+			result = fs.makedir(path);
+		} catch (ignoreMkdir) {
+			return directoryExists(fs, path);
+		}
+		if (fsErr(result) === ERR_OK) {
+			return true;
+		}
+		return directoryExists(fs, path);
+	}
+
+	function ensurePath(fs, dir) {
+		var parts;
+		var current;
+		var i;
+		var start;
+		if (!dir) {
+			return false;
+		}
+		parts = String(dir).replace(/\\/g, "/").replace(/\/+$/, "").split("/");
+		if (!parts.length) {
+			return false;
+		}
+		if (parts[0] === "") {
+			current = "";
+			start = 1;
+		} else if (/^[A-Za-z]:$/.test(parts[0])) {
+			current = parts[0];
+			start = 1;
+		} else {
+			current = parts[0];
+			start = 1;
+			if (current && !mkdir(fs, current)) {
+				return false;
+			}
+		}
+		for (i = start; i < parts.length; i++) {
+			if (!parts[i]) {
+				continue;
+			}
+			current = current ? current + "/" + parts[i] : "/" + parts[i];
+			if (current === "/") {
+				continue;
+			}
+			if (!mkdir(fs, current)) {
+				return false;
+			}
+		}
+		return directoryExists(fs, dir) || mkdir(fs, dir);
 	}
 
 	function ensureDirectory(options) {
 		var status = storageStatus(options);
 		var fs = fsApi(options);
-		var dir;
-		var root;
-		var userId;
 		if (!status.ok) {
 			return status;
 		}
-		dir = status.directory;
-		root = (options && options.userDataPath) || "";
-		userId = status.userId;
-		if (root && userId && !(options && options.directory)) {
-			mkdir(fs, joinPath(root, "PickFX"));
-			mkdir(fs, joinPath(root, "PickFX/users"));
-			mkdir(fs, joinPath(root, "PickFX/users/" + userId));
-		} else {
-			mkdir(fs, dir.replace(/\/presets$/, ""));
-			mkdir(fs, dir.replace(/\/presets$/, "").replace(/\/[^/]+$/, ""));
+		if (!ensurePath(fs, status.directory)) {
+			return {
+				ok: false,
+				reason: "PRESET_STORAGE_UNAVAILABLE",
+				detail: "PickFX could not create the preset folder."
+			};
 		}
-		mkdir(fs, dir.replace(/\/presets$/, ""));
-		mkdir(fs, dir);
 		return status;
 	}
 

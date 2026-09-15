@@ -48,7 +48,7 @@
 	assert("panel loads CepKeyInterest before panel.js", panelHtml.indexOf("CepKeyInterest.js") !== -1 &&
 		panelHtml.indexOf("CepKeyInterest.js") < panelHtml.indexOf("js/panel.js"));
 	assert("effect-search runtime cache-bust is visible in panel html",
-		panelHtml.indexOf("panel.js?v=24b6bf1-presets-parity-v1") !== -1 &&
+		panelHtml.indexOf("panel.js?v=json2-extendscript-v1") !== -1 &&
 		panelHtml.indexOf("PaletteFlow.js?v=effect-search-only-20260904") !== -1);
 	assert("panel loads palette keyboard", panelHtml.indexOf("PaletteKeyboard.js") !== -1);
 	assert("panel has value input", panelHtml.indexOf("id=\"value-input\"") !== -1);

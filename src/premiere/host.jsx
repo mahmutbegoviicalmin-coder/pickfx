@@ -17,6 +17,30 @@ try {
 	};
 }
 
+try {
+	if (typeof JSON === "undefined" || !JSON ||
+			typeof JSON.parse !== "function" || typeof JSON.stringify !== "function") {
+		var pickfxJson2File = new File((new File($.fileName)).parent.fsName + "/json2.js");
+		if (pickfxJson2File.exists) {
+			$.evalFile(pickfxJson2File.fsName);
+		}
+		$._pickfxJsonPolyfill = {
+			ready: typeof JSON !== "undefined" && !!JSON &&
+				typeof JSON.parse === "function" && typeof JSON.stringify === "function",
+			native: false
+		};
+	} else {
+		$._pickfxJsonPolyfill = { ready: true, native: true };
+	}
+} catch (pickfxJson2LoadError) {
+	$._pickfxJsonPolyfill = {
+		ready: typeof JSON !== "undefined" && !!JSON &&
+			typeof JSON.parse === "function" && typeof JSON.stringify === "function",
+		native: false,
+		error: String(pickfxJson2LoadError)
+	};
+}
+
 // QE DOM adapter. Official Premiere DOM cannot add effects.
 // Isolated here so panel JS never talks to QE directly.
 $._pickfxQE = {

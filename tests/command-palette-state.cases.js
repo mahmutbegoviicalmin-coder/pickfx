@@ -287,6 +287,16 @@
 
 	msg = CommandPaletteState.userFacingMessage({
 		ok: false,
+		capture: true,
+		reason: "JSON_UNAVAILABLE",
+		failingModule: "/src/premiere/json2.js",
+		exactError: "JSON_POLYFILL_MISSING"
+	});
+	assertEq("capture json unavailable title", msg.title, "Preset engine couldn't start");
+	assert("capture json unavailable hides polyfill path", (msg.title + msg.detail + msg.footer).indexOf("json2") === -1);
+
+	msg = CommandPaletteState.userFacingMessage({
+		ok: false,
 		reason: "SAFE_EXECUTOR_UNAVAILABLE",
 		status: "EvalScript error. host.jsx may not be loaded.",
 		detail: "EvalScript error. host.jsx may not be loaded."

@@ -30,6 +30,9 @@ var CommandPaletteState = (function () {
 		"USEDQE",
 		"PRESET_HOST_MODULE_LOAD_FAILED",
 		"PRESET_HOST_NOT_READY",
+		"JSON_UNAVAILABLE",
+		"EXTENDSCRIPT_UNAVAILABLE",
+		"PRESET_HOST_STATUS_FAILED",
 		"PRESET_STORAGE_UNAVAILABLE",
 		"PRESET_USER_SCOPE_UNAVAILABLE",
 		"PRESET_CAPABILITY_PARITY_BUG",
@@ -293,6 +296,8 @@ var CommandPaletteState = (function () {
 		reason = payload && payload.reason ? String(payload.reason) : "";
 		status = payload && payload.status ? String(payload.status) : "";
 		if (reason === "PRESET_HOST_MODULE_LOAD_FAILED" || reason === "PRESET_HOST_NOT_READY" ||
+				reason === "JSON_UNAVAILABLE" || reason === "EXTENDSCRIPT_UNAVAILABLE" ||
+				reason === "PRESET_HOST_STATUS_FAILED" ||
 				(payload && payload.capture === true && (reason === "SAFE_EXECUTOR_UNAVAILABLE" ||
 					reason === "WRITE_FAILED" || /EvalScript/i.test(status + " " + (payload.detail || "") + " " + (payload.error || ""))))) {
 			return {

@@ -16,8 +16,22 @@ var PremiereBridge = (function () {
 			return {
 				ok: false,
 				reason: "SAFE_EXECUTOR_UNAVAILABLE",
-				detail: "EvalScript error. host.jsx may not be loaded.",
-				error: "EvalScript error. host.jsx may not be loaded.",
+				detail: "EvalScript communication failed.",
+				error: "EvalScript communication failed.",
+				evalScriptError: true,
+				verified: false,
+				targetLocked: false
+			};
+		}
+		if (result === "JSON_MISSING" || result === "JSON_PROBE_FAILED" ||
+				result === "JSON_POLYFILL_MISSING" || result === "JSON_POLYFILL_FAILED") {
+			return {
+				ok: false,
+				reason: "JSON_UNAVAILABLE",
+				detail: "ExtendScript JSON is not available.",
+				error: String(result),
+				exactError: String(result),
+				jsonReady: false,
 				verified: false,
 				targetLocked: false
 			};
@@ -1133,7 +1147,20 @@ var PremiereBridge = (function () {
 		return String(root || "").replace(/\\/g, "/");
 	}
 
-	var PRESET_RUNTIME_VERSION = "24b6bf1-presets-parity-v1";
+	var PRESET_RUNTIME_VERSION = "json2-extendscript-v1";
+	var JSON_POLYFILL_PATH = "/src/premiere/json2.js";
+	var JSON_READY_TOKEN = "JSON_READY";
+	var JSON_MISSING_TOKEN = "JSON_MISSING";
+	var JSON_PROBE_FAILED_TOKEN = "JSON_PROBE_FAILED";
+	var JSON_POLYFILL_MISSING_TOKEN = "JSON_POLYFILL_MISSING";
+	var JSON_POLYFILL_FAILED_TOKEN = "JSON_POLYFILL_FAILED";
+	var HOST_PRESENT_TOKEN = "HOST_PRESENT";
+	var HOST_MISSING_TOKEN = "HOST_MISSING";
+	var HOST_PROBE_FAILED_TOKEN = "HOST_PROBE_FAILED";
+	var FILE_OK_TOKEN = "FILE_OK";
+	var FILE_NOT_FOUND_TOKEN = "FILE_NOT_FOUND";
+	var GLOBAL_OK_TOKEN = "GLOBAL_OK";
+	var GLOBAL_MISSING_TOKEN = "GLOBAL_MISSING";
 	var PRESET_HOST_MODULES = [
 		{ path: "/src/core/ParameterResolver.js", globalName: "_pickfxParameterResolver" },
 		{ path: "/src/core/PointValue.js", globalName: "_pickfxPointValue" },
@@ -1157,6 +1184,97 @@ var PremiereBridge = (function () {
 		return String(value || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 	}
 
+	function jsonIsReadyExtendScript() {
+		return "typeof JSON!=='undefined'&&JSON&&typeof JSON.parse==='function'&&typeof JSON.stringify==='function'";
+	}
+
+	function jsonReadyProbeScript() {
+		return "(function(){try{" +
+			"if(" + jsonIsReadyExtendScript() + "){return '" + JSON_READY_TOKEN + "';}" +
+			"return '" + JSON_MISSING_TOKEN + "';" +
+			"}catch(e){return '" + JSON_PROBE_FAILED_TOKEN + "';}})()";
+	}
+
+	function loadJsonPolyfillScript(csInterface) {
+		var root = extensionRoot(csInterface);
+		var fullPath;
+		if (!root) {
+			return "";
+		}
+		fullPath = (root + JSON_POLYFILL_PATH).replace(/\\/g, "/");
+		return "(function(){try{" +
+			"if(" + jsonIsReadyExtendScript() + "){return '" + JSON_READY_TOKEN + "';}" +
+			"var f=new File(\"" + escapeExtendScriptString(fullPath) + "\");" +
+			"if(!f.exists){return '" + JSON_POLYFILL_MISSING_TOKEN + "';}" +
+			"$.evalFile(f.fsName);" +
+			"if(" + jsonIsReadyExtendScript() + "){return '" + JSON_READY_TOKEN + "';}" +
+			"return '" + JSON_POLYFILL_FAILED_TOKEN + "';" +
+			"}catch(e){return '" + JSON_POLYFILL_FAILED_TOKEN + "';}})()";
+	}
+
+	function isJsonReadyToken(result) {
+		return result === JSON_READY_TOKEN;
+	}
+
+	function jsonUnavailablePayload(result, extra) {
+		var payload = {
+			ok: false,
+			reason: "JSON_UNAVAILABLE",
+			failingStage: "jsonPolyfill",
+			failingModule: JSON_POLYFILL_PATH,
+			exactError: result == null ? "" : String(result),
+			jsonReady: false,
+			preset: true,
+			capture: true,
+			detail: "ExtendScript JSON is not available."
+		};
+		var key;
+		if (extra) {
+			for (key in extra) {
+				if (extra.hasOwnProperty(key)) {
+					payload[key] = extra[key];
+				}
+			}
+		}
+		return payload;
+	}
+
+	function ensureExtendScriptJson(csInterface, done) {
+		csInterface.evalScript(jsonReadyProbeScript(), function (result) {
+			var script;
+			if (isJsonReadyToken(result)) {
+				done({ ok: true, jsonReady: true, jsonNative: true });
+				return;
+			}
+			if (isEvalScriptError(result)) {
+				done({
+					ok: false,
+					reason: "EXTENDSCRIPT_UNAVAILABLE",
+					failingStage: "jsonProbe",
+					exactError: String(result),
+					jsonReady: false,
+					communicationError: true,
+					preset: true,
+					capture: true,
+					detail: "Could not reach ExtendScript to check JSON support."
+				});
+				return;
+			}
+			script = loadJsonPolyfillScript(csInterface);
+			if (!script) {
+				done(jsonUnavailablePayload("missing_extension_path"));
+				return;
+			}
+			csInterface.evalScript(script, function (loaded) {
+				if (isJsonReadyToken(loaded)) {
+					done({ ok: true, jsonReady: true, jsonNative: false });
+					return;
+				}
+				done(jsonUnavailablePayload(loaded));
+			});
+		});
+	}
+
 	function evalFileScript(csInterface, relativePath) {
 		var root = extensionRoot(csInterface);
 		if (!root) {
@@ -1174,26 +1292,42 @@ var PremiereBridge = (function () {
 		fullPath = (root + relativePath).replace(/\\/g, "/");
 		return "(function(){try{" +
 			"var f=new File(\"" + escapeExtendScriptString(fullPath) + "\");" +
-			"if(!f.exists){return JSON.stringify({ok:false,error:\"file_not_found\",path:\"" +
-			escapeExtendScriptString(fullPath) + "\"});}" +
+			"if(!f.exists){return '" + FILE_NOT_FOUND_TOKEN + "';}" +
 			"$.evalFile(f.fsName);" +
-			"return JSON.stringify({ok:true,path:\"" + escapeExtendScriptString(fullPath) + "\"});" +
-			"}catch(e){return JSON.stringify({ok:false,error:String(e)});}})()";
+			"return '" + FILE_OK_TOKEN + "';" +
+			"}catch(e){return 'FILE_EVAL_FAILED:'+String(e);}})()";
 	}
 
 	function verifyPresetGlobalScript(globalName) {
 		return "(function(){try{" +
 			"var ok=false;" +
 			"try{ok=typeof $!=='undefined'&&typeof $." + globalName + "!=='undefined';}catch(e1){ok=false;}" +
-			"return JSON.stringify({ok:ok===true,globalName:\"" + globalName + "\"});" +
-			"}catch(e){return JSON.stringify({ok:false,error:String(e),globalName:\"" +
-			globalName + "\"});}})()";
+			"return ok===true?'" + GLOBAL_OK_TOKEN + "':'" + GLOBAL_MISSING_TOKEN + "';" +
+			"}catch(e){return '" + GLOBAL_MISSING_TOKEN + "';}})()";
+	}
+
+	function hostPresentTokenScript() {
+		return "(function(){try{" +
+			"return (typeof $!=='undefined'&&typeof $._pickfx!=='undefined')?'" +
+			HOST_PRESENT_TOKEN + "':'" + HOST_MISSING_TOKEN + "';" +
+			"}catch(e){return '" + HOST_PROBE_FAILED_TOKEN + "';}})()";
 	}
 
 	function hostPresentScript() {
-		return "(function(){try{" +
-			"return JSON.stringify({ok:typeof $!=='undefined'&&typeof $._pickfx!=='undefined'});" +
-			"}catch(e){return JSON.stringify({ok:false,error:String(e)});}})()";
+		return hostPresentTokenScript();
+	}
+
+	function parseModuleEvalResult(result) {
+		if (result === FILE_OK_TOKEN) {
+			return { ok: true };
+		}
+		if (result === FILE_NOT_FOUND_TOKEN) {
+			return { ok: false, error: "file_not_found" };
+		}
+		if (String(result).indexOf("FILE_EVAL_FAILED:") === 0) {
+			return { ok: false, error: String(result).slice("FILE_EVAL_FAILED:".length) };
+		}
+		return parseEvalResult(result);
 	}
 
 	function presetModuleLoadFailed(modulePath, moduleIndex, evalResult, expectedGlobal, hostBefore, extra) {
@@ -1324,40 +1458,56 @@ var PremiereBridge = (function () {
 			"payload.parameterCapabilityLoaded=typeof $._pickfxParameterCapability!=='undefined';" +
 			"payload.presetSchemaLoaded=typeof $._pickfxPresetSchema!=='undefined';" +
 			"payload.listCapturableExists=list;" +
+			"payload.jsonReady=(" + jsonIsReadyExtendScript() + ");" +
+			"payload.host=host;" +
 			"return JSON.stringify(payload);" +
-			"}catch(e){return JSON.stringify({ok:false,host:false,presetHost:false," +
-			"detail:String(e),exactError:String(e)});}})()";
+			"}catch(e){return JSON.stringify({ok:false,host:typeof $!=='undefined'&&typeof $._pickfx!=='undefined'," +
+			"presetHost:false,reason:'PRESET_HOST_STATUS_FAILED',detail:String(e),exactError:String(e)});}})()";
+	}
+
+	function finishFailedPresetStatus(csInterface, result, done) {
+		csInterface.evalScript(hostPresentTokenScript(), function (hostToken) {
+			var hostPresent = hostToken === HOST_PRESENT_TOKEN;
+			var jsonMissing = result === JSON_MISSING_TOKEN ||
+				result === JSON_PROBE_FAILED_TOKEN ||
+				result === JSON_POLYFILL_MISSING_TOKEN ||
+				result === JSON_POLYFILL_FAILED_TOKEN;
+			done(annotatePresetHostStatus({
+				ok: false,
+				host: hostPresent,
+				presetHost: false,
+				communicationError: isEvalScriptError(result),
+				jsonReady: !jsonMissing,
+				reason: jsonMissing ? "JSON_UNAVAILABLE" :
+					(isEvalScriptError(result) ? "EXTENDSCRIPT_UNAVAILABLE" : "PRESET_HOST_STATUS_FAILED"),
+				detail: jsonMissing
+					? "ExtendScript JSON is not available."
+					: (isEvalScriptError(result)
+						? "Preset host status call failed. This is not proof that host.jsx is missing."
+						: "Could not parse Preset host status."),
+				exactError: String(result),
+				evalScriptError: isEvalScriptError(result),
+				staleRuntime: true,
+				expectedRuntimeVersion: PRESET_RUNTIME_VERSION,
+				runtimeVersion: ""
+			}));
+		});
 	}
 
 	function pingPresetHost(csInterface, done) {
 		csInterface.evalScript(presetHostStatusScript(), function (result) {
 			var payload;
-			if (isEvalScriptError(result)) {
-				done({
-					ok: false,
-					host: false,
-					presetHost: false,
-					evalScriptError: true,
-					staleRuntime: true,
-					expectedRuntimeVersion: PRESET_RUNTIME_VERSION,
-					runtimeVersion: "",
-					detail: "EvalScript error while checking Preset host.",
-					exactError: String(result)
-				});
+			if (isEvalScriptError(result) ||
+					result === JSON_MISSING_TOKEN ||
+					result === JSON_PROBE_FAILED_TOKEN ||
+					result === JSON_POLYFILL_MISSING_TOKEN ||
+					result === JSON_POLYFILL_FAILED_TOKEN) {
+				finishFailedPresetStatus(csInterface, result, done);
 				return;
 			}
 			payload = parseEvalResult(result);
 			if (!payload || payload.raw) {
-				done({
-					ok: false,
-					host: false,
-					presetHost: false,
-					staleRuntime: true,
-					expectedRuntimeVersion: PRESET_RUNTIME_VERSION,
-					runtimeVersion: "",
-					detail: (payload && payload.detail) || "Could not parse Preset host status.",
-					exactError: String(result)
-				});
+				finishFailedPresetStatus(csInterface, result, done);
 				return;
 			}
 			done(annotatePresetHostStatus(payload));
@@ -1403,16 +1553,15 @@ var PremiereBridge = (function () {
 						done(presetModuleLoadFailed(spec.path, index, result, spec.globalName, hostBefore));
 						return;
 					}
-					csInterface.evalScript(hostPresentScript(), function (verifyResult) {
-						var verified = parseEvalResult(verifyResult);
-						if (isEvalScriptError(verifyResult) || !verified || verified.ok !== true) {
+					csInterface.evalScript(hostPresentTokenScript(), function (verifyResult) {
+						if (verifyResult !== HOST_PRESENT_TOKEN) {
 							done(presetModuleLoadFailed(
 								spec.path,
 								index,
 								verifyResult,
 								spec.globalName,
 								hostBefore,
-								{ exactError: verified && verified.error ? verified.error : String(verifyResult) }
+								{ exactError: String(verifyResult) }
 							));
 							return;
 						}
@@ -1432,7 +1581,7 @@ var PremiereBridge = (function () {
 					done(presetModuleLoadFailed(spec.path, index, result, spec.globalName, hostBefore));
 					return;
 				}
-				loaded = parseEvalResult(result);
+				loaded = parseModuleEvalResult(result);
 				if (!loaded || loaded.ok !== true) {
 					done(presetModuleLoadFailed(
 						spec.path,
@@ -1448,8 +1597,7 @@ var PremiereBridge = (function () {
 					return;
 				}
 				csInterface.evalScript(verifyPresetGlobalScript(spec.globalName), function (verifyResult) {
-					var verified = parseEvalResult(verifyResult);
-					if (isEvalScriptError(verifyResult) || !verified || verified.ok !== true) {
+					if (verifyResult !== GLOBAL_OK_TOKEN) {
 						done(presetModuleLoadFailed(
 							spec.path,
 							index,
@@ -1457,7 +1605,7 @@ var PremiereBridge = (function () {
 							spec.globalName,
 							hostBefore,
 							{
-								exactError: (verified && verified.error) || String(verifyResult),
+								exactError: String(verifyResult),
 								failingStage: "verifyGlobal"
 							}
 						));
@@ -1472,23 +1620,35 @@ var PremiereBridge = (function () {
 
 	function ensurePresetHost(csInterface, done, options) {
 		options = options || {};
-		pingPresetHost(csInterface, function (status) {
-			var loads = [];
-			var forceReload = options.forceReload === true || !status || status.ok !== true;
-			if (!forceReload) {
-				done(status);
+		ensureExtendScriptJson(csInterface, function (jsonStatus) {
+			if (!jsonStatus || jsonStatus.ok !== true) {
+				done(jsonStatus || jsonUnavailablePayload("json_probe_failed"));
 				return;
 			}
-			if (!status || status.host !== true) {
-				loads.push({ path: "/src/premiere/host.jsx", globalName: "_pickfx" });
-			}
-			loads = loads.concat(PRESET_HOST_MODULES);
-			loadPresetHostStack(csInterface, loads, status, done);
+			pingPresetHost(csInterface, function (status) {
+				var loads = [];
+				var forceReload = options.forceReload === true || !status || status.ok !== true;
+				if (status) {
+					status.jsonReady = true;
+				}
+				if (!forceReload) {
+					done(status);
+					return;
+				}
+				if (!status || status.host !== true) {
+					loads.push({ path: "/src/premiere/host.jsx", globalName: "_pickfx" });
+				}
+				loads = loads.concat(PRESET_HOST_MODULES);
+				loadPresetHostStack(csInterface, loads, status, done);
+			});
 		});
 	}
 
 	function missingPresetHostPayload(host) {
-		if (host && host.reason === "PRESET_HOST_MODULE_LOAD_FAILED") {
+		if (host && (host.reason === "PRESET_HOST_MODULE_LOAD_FAILED" ||
+				host.reason === "JSON_UNAVAILABLE" ||
+				host.reason === "EXTENDSCRIPT_UNAVAILABLE" ||
+				host.reason === "PRESET_HOST_STATUS_FAILED")) {
 			host.preset = true;
 			host.capture = true;
 			return host;
@@ -1565,7 +1725,7 @@ var PremiereBridge = (function () {
 			report.presetSchemaLoaded = !!(host && host.presetSchemaLoaded);
 			report.listCapturableExists = !!(host && (host.listCapturableExists || host.listCapturable));
 			report.runtimeVersion = host && host.runtimeVersion ? host.runtimeVersion : "";
-			report.hostStatusBefore = host && host.hostStatusBefore ? host.hostStatusBefore : null;
+			report.hostStatusBefore = host && host.hostStatusBefore ? host.hostStatusBefore : report.hostStatusBefore;
 			report.hostStatusAfter = host || null;
 			report.selectedVideoCount = listed && typeof listed.count === "number" ? listed.count :
 				(listed && listed.session ? 1 : 0);
@@ -1591,17 +1751,30 @@ var PremiereBridge = (function () {
 			report.componentCount = listed.components ? listed.components.length : 0;
 			done(report);
 		}
-		pingPresetHost(csInterface, function (before) {
-			report.hostStatusBefore = before;
-			ensurePresetHost(csInterface, function (host) {
-				if (!host || host.ok !== true) {
-					finish(host, null);
-					return;
-				}
-				listCapturableComponents(csInterface, function (listed) {
-					finish(host, listed);
-				});
-			}, { forceReload: true });
+		ensureExtendScriptJson(csInterface, function (jsonStatus) {
+			report.jsonReady = !!(jsonStatus && jsonStatus.ok);
+			report.jsonNative = !!(jsonStatus && jsonStatus.jsonNative);
+			if (!jsonStatus || jsonStatus.ok !== true) {
+				report.ok = false;
+				report.failingStage = (jsonStatus && jsonStatus.failingStage) || "jsonPolyfill";
+				report.failingModule = JSON_POLYFILL_PATH;
+				report.exactError = (jsonStatus && jsonStatus.exactError) || "";
+				report.reason = (jsonStatus && jsonStatus.reason) || "JSON_UNAVAILABLE";
+				done(report);
+				return;
+			}
+			pingPresetHost(csInterface, function (before) {
+				report.hostStatusBefore = before;
+				ensurePresetHost(csInterface, function (host) {
+					if (!host || host.ok !== true) {
+						finish(host, null);
+						return;
+					}
+					listCapturableComponents(csInterface, function (listed) {
+						finish(host, listed);
+					});
+				}, { forceReload: true });
+			});
 		});
 	}
 
@@ -1927,10 +2100,12 @@ var PremiereBridge = (function () {
 		ensureActionHost: ensureActionHost,
 		runAction: runAction,
 		ensurePresetHost: ensurePresetHost,
+		ensureExtendScriptJson: ensureExtendScriptJson,
 		debugPresetHostBootstrap: debugPresetCaptureStartup,
 		debugPresetCaptureStartup: debugPresetCaptureStartup,
 		PRESET_RUNTIME_VERSION: PRESET_RUNTIME_VERSION,
 		PRESET_HOST_MODULES: PRESET_HOST_MODULES,
+		JSON_POLYFILL_PATH: JSON_POLYFILL_PATH,
 		listCapturableComponents: listCapturableComponents,
 		captureComponentScript: captureComponentScript,
 		captureComponent: captureComponent,

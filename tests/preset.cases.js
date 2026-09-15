@@ -36,6 +36,7 @@
 	var sharedFs;
 	var accountIds;
 	var i;
+	var panelSource;
 
 	var USER_A = "11111111-1111-4111-8111-111111111111";
 	var USER_B = "22222222-2222-4222-8222-222222222222";
@@ -960,6 +961,98 @@
 	assert("account b cannot see account a presets", listed.ok === true && listed.presets.length === 0);
 	listed = PresetStore.list(scopedStorage(USER_A, sharedFs));
 	assert("account a still sees its own presets", listed.ok === true && listed.presets.length === 1);
+
+	(function signedInSaveFlow() {
+		var dirs = { "/tmp": true };
+		var files = {};
+		var created = [];
+		var nestedFs = {
+			makedir: function (path) {
+				var key = String(path || "").replace(/\/+$/, "");
+				var parent = key.replace(/\/[^/]+$/, "");
+				created.push(key);
+				if (dirs[key]) {
+					return { err: 1 };
+				}
+				if (parent && parent !== key && !dirs[parent]) {
+					return { err: 3 };
+				}
+				dirs[key] = true;
+				return { err: 0 };
+			},
+			readdir: function (dir) {
+				var key = String(dir || "").replace(/\/+$/, "");
+				var names = [];
+				var prefix = key + "/";
+				var fileKey;
+				if (!dirs[key]) {
+					return { err: 1, data: [] };
+				}
+				for (fileKey in files) {
+					if (files.hasOwnProperty(fileKey) && fileKey.indexOf(prefix) === 0) {
+						names.push(fileKey.slice(prefix.length));
+					}
+				}
+				return { err: 0, data: names };
+			},
+			writeFile: function (path, data) {
+				files[path] = String(data);
+				return { err: 0 };
+			},
+			readFile: function (path) {
+				if (!files.hasOwnProperty(path)) {
+					return { err: 1 };
+				}
+				return { err: 0, data: files[path] };
+			},
+			deleteFile: function (path) {
+				delete files[path];
+				return { err: 0 };
+			}
+		};
+		var saveOptions;
+		var first;
+		var replaced;
+		function panelSaveOptions(replaceId) {
+			var options = {
+				fs: nestedFs,
+				userId: USER_A,
+				userDataPath: "/tmp",
+				csInterface: {
+					getSystemPath: function () {
+						return "/tmp";
+					}
+				}
+			};
+			if (replaceId) {
+				options.replaceId = replaceId;
+			}
+			return options;
+		}
+		saveOptions = panelSaveOptions();
+		first = PresetStore.save(samplePreset("Signed In Look", { token: "aa11bb" }).preset, saveOptions);
+		assert("signed-in save writes with userId", first.ok === true);
+		assert("mkdir creates PickFX before users", created.indexOf("/tmp/PickFX") !== -1 &&
+			created.indexOf("/tmp/PickFX/users") !== -1 &&
+			created.indexOf("/tmp/PickFX") < created.indexOf("/tmp/PickFX/users"));
+		assert("mkdir creates user folder before presets",
+			created.indexOf("/tmp/PickFX/users/" + USER_A) !== -1 &&
+			created.indexOf("/tmp/PickFX/users/" + USER_A + "/presets") !== -1 &&
+			created.indexOf("/tmp/PickFX/users/" + USER_A) <
+				created.indexOf("/tmp/PickFX/users/" + USER_A + "/presets"));
+		replaced = PresetStore.save(samplePreset("Signed In Look", { token: "cc33dd" }).preset, panelSaveOptions(first.preset.id));
+		assert("signed-in replaceId save reuses existing folders", replaced.ok === true &&
+			replaced.preset.id === first.preset.id);
+	}());
+
+	if (typeof fs !== "undefined" && typeof path !== "undefined" && typeof __pickfxRoot !== "undefined") {
+		panelSource = fs.readFileSync(path.join(__pickfxRoot, "src/panel/js/panel.js"), "utf8");
+		assert("panel save passes presetStoreOptions via captureSaveOptions",
+			panelSource.indexOf("PresetStore.save(built.preset, captureSaveOptions(replaceId))") !== -1);
+		assert("captureSaveOptions starts from presetStoreOptions",
+			panelSource.indexOf("function captureSaveOptions(replaceId)") !== -1 &&
+			panelSource.indexOf("var options = presetStoreOptions();") !== -1);
+	}
 	accountIds = [];
 	if (PanelEntitlement.onAccountChange) {
 		PanelEntitlement.onAccountChange(function (id) {

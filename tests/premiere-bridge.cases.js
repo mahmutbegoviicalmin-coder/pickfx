@@ -5,6 +5,7 @@
 	var captureScript;
 	var applyCalls;
 	var i;
+	var json2Source;
 
 	function mockCS(results) {
 		var i = 0;
@@ -34,6 +35,10 @@
 		"eval error gets a reason",
 		PremiereBridge.parseEvalResult("EvalScript error.").reason,
 		"SAFE_EXECUTOR_UNAVAILABLE"
+	);
+	assert(
+		"eval error does not assume host.jsx is missing",
+		String(PremiereBridge.parseEvalResult("EvalScript error.").detail).indexOf("host.jsx") === -1
 	);
 	assertEq(
 		"eval error is not a verified write",
@@ -372,12 +377,25 @@
 	function mockPresetHostCS(onScript) {
 		return {
 			evalScript: function (script, done) {
-				scripts.push(String(script || ""));
+				var s = String(script || "");
+				scripts.push(s);
 				if (onScript) {
-					onScript(String(script || ""));
+					onScript(s);
 				}
-				if (String(script).indexOf("presetHostStatus") !== -1 ||
-						String(script).indexOf("listCapturable") !== -1) {
+				if (s.indexOf("json2.js") !== -1) {
+					done("JSON_READY");
+					return;
+				}
+				if (s.indexOf("JSON_MISSING") !== -1) {
+					done("JSON_READY");
+					return;
+				}
+				if (s.indexOf("HOST_PRESENT") !== -1 && s.indexOf("presetHostStatus") === -1) {
+					done("HOST_PRESENT");
+					return;
+				}
+				if (s.indexOf("presetHostStatus") !== -1 ||
+						s.indexOf("listCapturable") !== -1) {
 					done(JSON.stringify({
 						ok: true,
 						host: true,
@@ -388,7 +406,7 @@
 					}));
 					return;
 				}
-				if (String(script).indexOf("applyPickFXPreset") !== -1) {
+				if (s.indexOf("applyPickFXPreset") !== -1) {
 					done("EvalScript error.");
 					return;
 				}
@@ -450,8 +468,24 @@
 			evalScript: function (script, done) {
 				var s = String(script || "");
 				calls.push(s);
+				if (s.indexOf("json2.js") !== -1) {
+					done(options.jsonPolyfillResult || "JSON_READY");
+					return;
+				}
+				if (s.indexOf("JSON_MISSING") !== -1) {
+					done(options.jsonProbe || "JSON_READY");
+					return;
+				}
+				if (s.indexOf("HOST_PRESENT") !== -1 && s.indexOf("presetHostStatus") === -1) {
+					done(options.hostProbe || "HOST_PRESENT");
+					return;
+				}
 				if (s.indexOf("presetHostStatus") !== -1) {
 					pings += 1;
+					if (options.statusEvalError === true && pings === 1) {
+						done("EvalScript error.");
+						return;
+					}
 					if (pings === 1 && options.firstStatus) {
 						done(JSON.stringify(options.firstStatus));
 						return;
@@ -461,18 +495,18 @@
 				}
 				if (s.indexOf("new File(") !== -1) {
 					if (options.failPath && s.indexOf(options.failPath) !== -1) {
-						done(options.failEval || JSON.stringify({ ok: false, error: "file_not_found" }));
+						done(options.failEval || "FILE_NOT_FOUND");
 						return;
 					}
-					done(JSON.stringify({ ok: true }));
+					done("FILE_OK");
 					return;
 				}
-				if (s.indexOf("globalName") !== -1) {
+				if (s.indexOf("GLOBAL_OK") !== -1) {
 					if (options.failGlobal && s.indexOf(options.failGlobal) !== -1) {
-						done(JSON.stringify({ ok: false }));
+						done("GLOBAL_MISSING");
 						return;
 					}
-					done(JSON.stringify({ ok: true }));
+					done("GLOBAL_OK");
 					return;
 				}
 				if (s.indexOf("listCapturableComponents()") !== -1) {
@@ -556,8 +590,61 @@
 	});
 	assert("successful bootstrap lists components", payload && payload.ok === true && payload.components.length === 1);
 
-	assert("bridge exposes runtime version", PremiereBridge.PRESET_RUNTIME_VERSION === "24b6bf1-presets-parity-v1");
+	payload = null;
+	PremiereBridge.ensurePresetHost(mockBootstrapCS({
+		jsonProbe: "JSON_MISSING",
+		jsonPolyfillResult: "JSON_READY",
+		status: {
+			ok: true,
+			host: true,
+			presetHost: true,
+			listCapturable: true,
+			applyPreset: true,
+			runtimeVersion: PremiereBridge.PRESET_RUNTIME_VERSION
+		}
+	}), function (result) {
+		payload = result;
+	});
+	assert("host without JSON loads polyfill then succeeds", payload && payload.ok === true);
+
+	payload = null;
+	PremiereBridge.ensurePresetHost(mockBootstrapCS({
+		jsonProbe: "JSON_MISSING",
+		jsonPolyfillResult: "JSON_POLYFILL_MISSING"
+	}), function (result) {
+		payload = result;
+	});
+	assertEq("missing json polyfill is JSON_UNAVAILABLE", payload.reason, "JSON_UNAVAILABLE");
+	assert("missing json does not claim host.jsx is missing", String(payload.detail || payload.exactError || "").indexOf("host.jsx") === -1);
+	assert("missing json names the polyfill", String(payload.failingModule || "").indexOf("json2.js") !== -1);
+
+	payload = null;
+	PremiereBridge.ensurePresetHost(mockBootstrapCS({
+		hostProbe: "HOST_PRESENT",
+		statusEvalError: true
+	}), function (result) {
+		payload = result;
+	});
+	assert("status eval error with present host still becomes ready", payload && payload.ok === true);
+
+	payload = null;
+	PremiereBridge.debugPresetCaptureStartup(mockBootstrapCS({
+		jsonProbe: "JSON_MISSING",
+		jsonPolyfillResult: "JSON_POLYFILL_MISSING"
+	}), function (result) {
+		payload = result;
+	});
+	assertEq("debug without JSON reports JSON_UNAVAILABLE", payload.reason, "JSON_UNAVAILABLE");
+	assert("debug without JSON does not claim host.jsx is missing", String(payload.exactError || payload.detail || "").indexOf("host.jsx") === -1);
+
+	assert("bridge exposes runtime version", PremiereBridge.PRESET_RUNTIME_VERSION === "json2-extendscript-v1");
 	assert("bridge exposes module list", PremiereBridge.PRESET_HOST_MODULES.length >= 12);
+	assert("bridge ships json2 polyfill path", PremiereBridge.JSON_POLYFILL_PATH === "/src/premiere/json2.js");
+	if (typeof fs !== "undefined" && typeof path !== "undefined" && typeof __pickfxRoot !== "undefined") {
+		json2Source = fs.readFileSync(path.join(__pickfxRoot, "src/premiere/json2.js"), "utf8");
+		assert("json2 keeps Crockford public-domain license", json2Source.indexOf("Public Domain") !== -1);
+		assert("json2 preserves an existing JSON object", json2Source.indexOf("typeof JSON !== \"object\"") !== -1);
+	}
 
 	print("premiere bridge: " + ((passed + failed) - startCount) + " assertions");
 }());
