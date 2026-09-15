@@ -115,26 +115,26 @@
 		parameter: "Blurriness",
 		value: 30
 	});
-	assertEq("success gaussian title", msg.title, "✓ Gaussian Blur 30");
-	assertEq("success gaussian detail", msg.detail, "Applied successfully");
+	assertEq("success gaussian title", msg.title, "✓ Gaussian Blur");
+	assertEq("success gaussian detail", msg.detail, "Blurriness 30");
 
 	assertEq("recent temperature", CommandPaletteState.recentLabel({
 		ok: true,
 		clipParameter: true,
 		parameter: "Temperature",
 		value: 239
-	}, "temperature 239"), "Temperature 239");
+	}, "temperature 239"), "Temperature");
 	assertEq("recent saturation", CommandPaletteState.recentLabel({
 		ok: true,
 		clipParameter: true,
 		parameter: "Saturation",
 		value: 40
-	}, "saturation 40"), "Saturation 40");
+	}, "saturation 40"), "Saturation");
 	assertEq("recent gaussian", CommandPaletteState.recentLabel({
 		ok: true,
 		effect: "Gaussian Blur",
 		value: 30
-	}, "Gaussian Blur 30"), "Gaussian Blur 30");
+	}, "Gaussian Blur 30"), "Gaussian Blur");
 
 	assert("success hold is 1.5-2s", CommandPaletteState.SUCCESS_HOLD_MS >= 1500 && CommandPaletteState.SUCCESS_HOLD_MS <= 2000);
 	assertEq("applying label", CommandPaletteState.applyingLabel(), "Applying...");
@@ -179,9 +179,29 @@
 		reason: "VALUE_NOT_VERIFIED",
 		status: "VALUE_NOT_VERIFIED"
 	});
-	assertEq("verify title", msg.title, "Couldn't verify the change");
-	assertEq("verify detail", msg.detail, "The value could not be confirmed. Try again.");
+	assertEq("verify title", msg.title, "Couldn’t apply that value.");
+	assertEq("verify detail", msg.detail, "The change could not be confirmed. Try again.");
 	assert("verify hides code", !CommandPaletteState.containsInternalCode(msg.title + msg.detail + msg.footer));
+
+	msg = CommandPaletteState.userFacingMessage({
+		ok: false,
+		reason: "TARGET_NOT_LOCKED",
+		status: "Effect value or target could not be verified."
+	});
+	assertEq("target lock title", msg.title, "Couldn’t apply that value.");
+	assert("target lock hides raw verify text", msg.title.indexOf("Effect value or target could not be verified.") === -1);
+	assert("target lock footer hides raw verify text", msg.footer.indexOf("Effect value or target could not be verified.") === -1);
+
+	msg = CommandPaletteState.userFacingMessage({
+		ok: false,
+		reason: "SAFE_EXECUTOR_UNAVAILABLE",
+		status: "EvalScript error. host.jsx may not be loaded.",
+		detail: "EvalScript error. host.jsx may not be loaded."
+	});
+	assertEq("evalscript title", msg.title, "Couldn’t apply that value.");
+	assert("evalscript hides host path", (msg.title + msg.detail + msg.footer).indexOf("host.jsx") === -1);
+	assert("evalscript hides eval text", (msg.title + msg.detail + msg.footer).indexOf("EvalScript") === -1);
+	assert("sanitize strips evalscript", CommandPaletteState.sanitizeVisibleText("EvalScript error. host.jsx may not be loaded.").indexOf("EvalScript") === -1);
 
 	msg = CommandPaletteState.userFacingMessage({
 		uiKind: "unsupported-custom",
@@ -247,6 +267,34 @@
 
 	msg = CommandPaletteState.userFacingMessage({
 		ok: false,
+		capture: true,
+		reason: "PRESET_HOST_MODULE_LOAD_FAILED",
+		failingModule: "/src/core/PresetCapability.js",
+		exactEvalResult: "EvalScript error."
+	});
+	assertEq("capture host failure title", msg.title, "Preset engine couldn't start");
+	assertEq("capture host failure detail", msg.detail, "Reload PickFX and try again.");
+	assert("capture host failure hides module path", (msg.title + msg.detail + msg.footer).indexOf("PresetCapability") === -1);
+	assert("capture host failure hides evalscript", (msg.title + msg.detail + msg.footer).indexOf("EvalScript") === -1);
+
+	msg = CommandPaletteState.userFacingMessage({
+		ok: false,
+		capture: true,
+		reason: "SAFE_EXECUTOR_UNAVAILABLE",
+		detail: "EvalScript error. host.jsx may not be loaded."
+	});
+	assertEq("capture evalscript is not apply copy", msg.title, "Preset engine couldn't start");
+
+	msg = CommandPaletteState.userFacingMessage({
+		ok: false,
+		reason: "SAFE_EXECUTOR_UNAVAILABLE",
+		status: "EvalScript error. host.jsx may not be loaded.",
+		detail: "EvalScript error. host.jsx may not be loaded."
+	});
+	assertEq("apply evalscript title unchanged", msg.title, "Couldn’t apply that value.");
+
+	msg = CommandPaletteState.userFacingMessage({
+		ok: false,
 		uiKind: "stale-lumetri",
 		reason: "PARAMETER_NOT_FOUND"
 	});
@@ -256,4 +304,28 @@
 	assert("sanitize hides code", CommandPaletteState.sanitizeVisibleText("Clip A · UNSUPPORTED_TYPE").indexOf("UNSUPPORTED_TYPE") === -1);
 	assert("sanitize parameter code gone", CommandPaletteState.sanitizeVisibleText("PARAMETER_NOT_FOUND").indexOf("PARAMETER_NOT_FOUND") === -1);
 	assert("sanitize never leaves needs code", CommandPaletteState.sanitizeVisibleText("NEEDS_PARAMETER_CHOICE").indexOf("NEEDS") === -1);
+
+	if (typeof RecentStore !== "undefined" && RecentStore.asEntry) {
+		assertEq("recent lumetri value becomes effect identity", RecentStore.asEntry({
+			kind: "command",
+			name: "Lumetri Color",
+			query: "Lumetri Color 40",
+			title: "Lumetri Color 40",
+			value: 40
+		}).kind, "effect");
+		assertEq("recent lumetri value uses effect name", RecentStore.asEntry({
+			kind: "command",
+			name: "Lumetri Color",
+			query: "Lumetri Color 40"
+		}).name, "Lumetri Color");
+		assertEq("recent lumetri value drops query", RecentStore.asEntry({
+			kind: "command",
+			name: "Lumetri Color",
+			query: "Lumetri Color Exposure 40"
+		}).query, "");
+		assertEq("recent numeric suffix without name strips value", RecentStore.asEntry({
+			kind: "command",
+			query: "Sharpen 29"
+		}).name, "Sharpen");
+	}
 }());

@@ -4,6 +4,7 @@ var PresetHost = (function () {
 	var MAX_RESULT_BYTES = 30000;
 	var MAX_CLIP_FAILURES = 3;
 	var MAX_FAILURE_CHARS = 160;
+	var RUNTIME_VERSION = "24b6bf1-presets-parity-v1";
 
 	function schema() {
 		if (typeof PresetSchema !== "undefined") {
@@ -1765,6 +1766,7 @@ var PresetHost = (function () {
 	}
 
 	return {
+		runtimeVersion: RUNTIME_VERSION,
 		PAGE_SIZE: PAGE_SIZE,
 		MAX_RESULT_BYTES: MAX_RESULT_BYTES,
 		listCapturableComponents: listCapturableComponents,

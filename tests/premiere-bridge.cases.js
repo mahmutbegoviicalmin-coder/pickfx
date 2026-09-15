@@ -383,7 +383,8 @@
 						host: true,
 						listCapturable: true,
 						applyPreset: true,
-						presetHost: true
+						presetHost: true,
+						runtimeVersion: PremiereBridge.PRESET_RUNTIME_VERSION
 					}));
 					return;
 				}
@@ -432,6 +433,131 @@
 	assertEq("uncertain apply evalScript stays failed", payload && payload.ok, false);
 	assertEq("uncertain apply evalScript does not look like missing host", payload.reason, "WRITE_FAILED");
 	assertEq("uncertain apply evalScript keeps hostReady", payload.hostReady, true);
+
+	function mockBootstrapCS(options) {
+		options = options || {};
+		var calls = [];
+		var pings = 0;
+		var readyStatus = {
+			ok: true,
+			host: true,
+			listCapturable: true,
+			applyPreset: true,
+			presetHost: true,
+			runtimeVersion: PremiereBridge.PRESET_RUNTIME_VERSION
+		};
+		return {
+			evalScript: function (script, done) {
+				var s = String(script || "");
+				calls.push(s);
+				if (s.indexOf("presetHostStatus") !== -1) {
+					pings += 1;
+					if (pings === 1 && options.firstStatus) {
+						done(JSON.stringify(options.firstStatus));
+						return;
+					}
+					done(JSON.stringify(options.status || readyStatus));
+					return;
+				}
+				if (s.indexOf("new File(") !== -1) {
+					if (options.failPath && s.indexOf(options.failPath) !== -1) {
+						done(options.failEval || JSON.stringify({ ok: false, error: "file_not_found" }));
+						return;
+					}
+					done(JSON.stringify({ ok: true }));
+					return;
+				}
+				if (s.indexOf("globalName") !== -1) {
+					if (options.failGlobal && s.indexOf(options.failGlobal) !== -1) {
+						done(JSON.stringify({ ok: false }));
+						return;
+					}
+					done(JSON.stringify({ ok: true }));
+					return;
+				}
+				if (s.indexOf("listCapturableComponents()") !== -1) {
+					done(JSON.stringify({
+						ok: true,
+						components: [{ displayName: "Crop", captureStatus: "full", supportedParameterCount: 5 }],
+						session: { clipName: "Talking" },
+						clipName: "Talking"
+					}));
+					return;
+				}
+				done(JSON.stringify({ ok: true }));
+			},
+			getSystemPath: function () {
+				return "/tmp/PickFX";
+			},
+			_calls: calls
+		};
+	}
+
+	scripts = [];
+	payload = null;
+	PremiereBridge.ensurePresetHost(mockBootstrapCS({
+		status: {
+			ok: true,
+			host: true,
+			presetHost: true,
+			listCapturable: true,
+			applyPreset: true,
+			runtimeVersion: PremiereBridge.PRESET_RUNTIME_VERSION
+		}
+	}), function (result) {
+		payload = result;
+	});
+	assert("matching runtime does not reload", payload && payload.ok === true);
+	assertEq("matching runtime keeps version", payload.runtimeVersion, PremiereBridge.PRESET_RUNTIME_VERSION);
+
+	payload = null;
+	PremiereBridge.ensurePresetHost(mockBootstrapCS({
+		firstStatus: {
+			ok: true,
+			host: true,
+			presetHost: true,
+			listCapturable: true,
+			applyPreset: true,
+			runtimeVersion: "old-runtime"
+		}
+	}), function (result) {
+		payload = result;
+	});
+	assert("stale runtime reloads then becomes ready", payload && payload.ok === true);
+	assertEq("stale runtime reports expected version after reload", payload.runtimeVersion, PremiereBridge.PRESET_RUNTIME_VERSION);
+
+	payload = null;
+	PremiereBridge.ensurePresetHost(mockBootstrapCS({
+		firstStatus: { ok: false, host: true, runtimeVersion: "" },
+		failPath: "PresetCapability.js",
+		failEval: JSON.stringify({ ok: false, error: "file_not_found" })
+	}), function (result) {
+		payload = result;
+	});
+	assertEq("failed module stops bootstrap", payload.reason, "PRESET_HOST_MODULE_LOAD_FAILED");
+	assert("failed module path is reported", String(payload.failingModule || payload.modulePath).indexOf("PresetCapability.js") !== -1);
+	assert("failed module eval result is kept", String(payload.exactEvalResult).indexOf("file_not_found") !== -1);
+
+	payload = null;
+	PremiereBridge.ensurePresetHost(mockBootstrapCS({
+		firstStatus: { ok: false, host: true, runtimeVersion: "" },
+		failGlobal: "_pickfxParameterWriter"
+	}), function (result) {
+		payload = result;
+	});
+	assertEq("missing global fails bootstrap", payload.reason, "PRESET_HOST_MODULE_LOAD_FAILED");
+	assertEq("missing global names the expected symbol", payload.expectedGlobal, "_pickfxParameterWriter");
+
+	payload = null;
+	PremiereBridge.listCapturableComponents(mockBootstrapCS({
+		firstStatus: { ok: false, host: true, runtimeVersion: "" }
+	}), function (result) {
+		payload = result;
+	});
+	assert("successful bootstrap lists components", payload && payload.ok === true && payload.components.length === 1);
+
+	assert("bridge exposes runtime version", PremiereBridge.PRESET_RUNTIME_VERSION === "24b6bf1-presets-parity-v1");
+	assert("bridge exposes module list", PremiereBridge.PRESET_HOST_MODULES.length >= 12);
 
 	print("premiere bridge: " + ((passed + failed) - startCount) + " assertions");
 }());

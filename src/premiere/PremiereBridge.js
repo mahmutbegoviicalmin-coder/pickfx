@@ -1133,12 +1133,101 @@ var PremiereBridge = (function () {
 		return String(root || "").replace(/\\/g, "/");
 	}
 
+	var PRESET_RUNTIME_VERSION = "24b6bf1-presets-parity-v1";
+	var PRESET_HOST_MODULES = [
+		{ path: "/src/core/ParameterResolver.js", globalName: "_pickfxParameterResolver" },
+		{ path: "/src/core/PointValue.js", globalName: "_pickfxPointValue" },
+		{ path: "/src/core/ParameterReadBack.js", globalName: "_pickfxParameterReadBack" },
+		{ path: "/src/core/ParameterValueType.js", globalName: "_pickfxParameterValueType" },
+		{ path: "/src/core/NumericCandidateClassifier.js", globalName: "_pickfxNumericCandidateClassifier" },
+		{ path: "/src/core/ConfirmedParameterWrites.js", globalName: "_pickfxConfirmedParameterWrites" },
+		{ path: "/src/core/ParameterCapability.js", globalName: "_pickfxParameterCapability" },
+		{ path: "/src/core/ParameterWriter.js", globalName: "_pickfxParameterWriter" },
+		{ path: "/src/core/NumberParameterWriter.js", globalName: "_pickfxNumberParameterWriter" },
+		{ path: "/src/core/BooleanParameterWriter.js", globalName: "_pickfxBooleanParameterWriter" },
+		{ path: "/src/core/PointParameterWriter.js", globalName: "_pickfxPointParameterWriter" },
+		{ path: "/src/core/UniversalParameterResolver.js", globalName: "_pickfxUniversalParameterResolver" },
+		{ path: "/src/core/UniversalParameterWriter.js", globalName: "_pickfxUniversalParameterWriter" },
+		{ path: "/src/core/PresetCapability.js", globalName: "_pickfxPresetCapability" },
+		{ path: "/src/core/PresetSchema.js", globalName: "_pickfxPresetSchema" },
+		{ path: "/src/core/PresetHost.js", globalName: "_pickfxPresetHost" }
+	];
+
+	function escapeExtendScriptString(value) {
+		return String(value || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+	}
+
 	function evalFileScript(csInterface, relativePath) {
 		var root = extensionRoot(csInterface);
 		if (!root) {
 			return "";
 		}
 		return '$.evalFile("' + (root + relativePath).replace(/"/g, '\\"') + '")';
+	}
+
+	function evalPresetModuleScript(csInterface, relativePath) {
+		var root = extensionRoot(csInterface);
+		var fullPath;
+		if (!root) {
+			return "";
+		}
+		fullPath = (root + relativePath).replace(/\\/g, "/");
+		return "(function(){try{" +
+			"var f=new File(\"" + escapeExtendScriptString(fullPath) + "\");" +
+			"if(!f.exists){return JSON.stringify({ok:false,error:\"file_not_found\",path:\"" +
+			escapeExtendScriptString(fullPath) + "\"});}" +
+			"$.evalFile(f.fsName);" +
+			"return JSON.stringify({ok:true,path:\"" + escapeExtendScriptString(fullPath) + "\"});" +
+			"}catch(e){return JSON.stringify({ok:false,error:String(e)});}})()";
+	}
+
+	function verifyPresetGlobalScript(globalName) {
+		return "(function(){try{" +
+			"var ok=false;" +
+			"try{ok=typeof $!=='undefined'&&typeof $." + globalName + "!=='undefined';}catch(e1){ok=false;}" +
+			"return JSON.stringify({ok:ok===true,globalName:\"" + globalName + "\"});" +
+			"}catch(e){return JSON.stringify({ok:false,error:String(e),globalName:\"" +
+			globalName + "\"});}})()";
+	}
+
+	function hostPresentScript() {
+		return "(function(){try{" +
+			"return JSON.stringify({ok:typeof $!=='undefined'&&typeof $._pickfx!=='undefined'});" +
+			"}catch(e){return JSON.stringify({ok:false,error:String(e)});}})()";
+	}
+
+	function presetModuleLoadFailed(modulePath, moduleIndex, evalResult, expectedGlobal, hostBefore, extra) {
+		var payload = {
+			ok: false,
+			reason: "PRESET_HOST_MODULE_LOAD_FAILED",
+			failingModule: modulePath,
+			failingStage: "ensurePresetHost",
+			modulePath: modulePath,
+			moduleIndex: moduleIndex,
+			exactEvalResult: evalResult == null ? "" : String(evalResult),
+			expectedGlobal: expectedGlobal || "",
+			hostStatusBefore: hostBefore || null,
+			preset: true,
+			capture: true
+		};
+		var key;
+		if (extra) {
+			for (key in extra) {
+				if (extra.hasOwnProperty(key)) {
+					payload[key] = extra[key];
+				}
+			}
+		}
+		return payload;
+	}
+
+	function annotatePresetHostStatus(payload) {
+		var status = payload || {};
+		status.expectedRuntimeVersion = PRESET_RUNTIME_VERSION;
+		status.runtimeVersion = status.runtimeVersion || "";
+		status.staleRuntime = status.runtimeVersion !== PRESET_RUNTIME_VERSION;
+		status.ok = status.ok === true && status.staleRuntime !== true;
+		return status;
 	}
 
 	function pingActionHost(csInterface, done) {
@@ -1219,12 +1308,25 @@ var PremiereBridge = (function () {
 			"var list=host&&typeof $._pickfx.listCapturableComponents==='function';" +
 			"var apply=host&&typeof $._pickfx.applyPickFXPreset==='function';" +
 			"var presetHost=typeof $._pickfxPresetHost!=='undefined';" +
+			"var runtime=presetHost&&$._pickfxPresetHost.runtimeVersion?String($._pickfxPresetHost.runtimeVersion):'';" +
+			"var payload;" +
 			"if(host&&typeof $._pickfx.presetHostStatus==='function'){" +
-			"return $._pickfx.presetHostStatus();}" +
-			"return JSON.stringify({ok:list&&apply&&presetHost,host:host," +
-			"listCapturable:list,applyPreset:apply,presetHost:presetHost});" +
+			"payload=JSON.parse($._pickfx.presetHostStatus());" +
+			"}else{payload={ok:false,host:host,listCapturable:list,applyPreset:apply,presetHost:presetHost};}" +
+			"payload.runtimeVersion=runtime||payload.runtimeVersion||'';" +
+			"payload.presetHostLoaded=presetHost;" +
+			"payload.presetCapabilityLoaded=typeof $._pickfxPresetCapability!=='undefined';" +
+			"payload.parameterResolverLoaded=typeof $._pickfxParameterResolver!=='undefined';" +
+			"payload.parameterWriterLoaded=typeof $._pickfxParameterWriter!=='undefined';" +
+			"payload.parameterValueTypeLoaded=typeof $._pickfxParameterValueType!=='undefined';" +
+			"payload.pointValueLoaded=typeof $._pickfxPointValue!=='undefined';" +
+			"payload.parameterReadBackLoaded=typeof $._pickfxParameterReadBack!=='undefined';" +
+			"payload.parameterCapabilityLoaded=typeof $._pickfxParameterCapability!=='undefined';" +
+			"payload.presetSchemaLoaded=typeof $._pickfxPresetSchema!=='undefined';" +
+			"payload.listCapturableExists=list;" +
+			"return JSON.stringify(payload);" +
 			"}catch(e){return JSON.stringify({ok:false,host:false,presetHost:false," +
-			"detail:String(e)});}})()";
+			"detail:String(e),exactError:String(e)});}})()";
 	}
 
 	function pingPresetHost(csInterface, done) {
@@ -1236,7 +1338,11 @@ var PremiereBridge = (function () {
 					host: false,
 					presetHost: false,
 					evalScriptError: true,
-					detail: "EvalScript error while checking Preset host."
+					staleRuntime: true,
+					expectedRuntimeVersion: PRESET_RUNTIME_VERSION,
+					runtimeVersion: "",
+					detail: "EvalScript error while checking Preset host.",
+					exactError: String(result)
 				});
 				return;
 			}
@@ -1246,80 +1352,165 @@ var PremiereBridge = (function () {
 					ok: false,
 					host: false,
 					presetHost: false,
-					detail: (payload && payload.detail) || "Could not parse Preset host status."
+					staleRuntime: true,
+					expectedRuntimeVersion: PRESET_RUNTIME_VERSION,
+					runtimeVersion: "",
+					detail: (payload && payload.detail) || "Could not parse Preset host status.",
+					exactError: String(result)
 				});
 				return;
 			}
-			payload.ok = payload.ok === true;
-			done(payload);
+			done(annotatePresetHostStatus(payload));
 		});
 	}
 
-	function ensurePresetHost(csInterface, done) {
+	function loadPresetHostStack(csInterface, loads, hostBefore, done) {
+		function loadNext(index) {
+			var spec;
+			var script;
+			if (index >= loads.length) {
+				pingPresetHost(csInterface, function (after) {
+					if (after && after.ok) {
+						after.hostStatusBefore = hostBefore;
+						after.hostStatusAfter = after;
+						done(after);
+						return;
+					}
+					done({
+						ok: false,
+						reason: "PRESET_HOST_NOT_READY",
+						failingStage: "ensurePresetHost",
+						detail: (after && after.detail) || "Preset host did not become ready after loading modules.",
+						hostStatusBefore: hostBefore,
+						hostStatusAfter: after || null,
+						runtimeVersion: after && after.runtimeVersion ? after.runtimeVersion : "",
+						expectedRuntimeVersion: PRESET_RUNTIME_VERSION,
+						preset: true,
+						capture: true
+					});
+				});
+				return;
+			}
+			spec = loads[index];
+			if (spec.path === "/src/premiere/host.jsx") {
+				script = evalFileScript(csInterface, spec.path);
+				if (!script) {
+					done(presetModuleLoadFailed(spec.path, index, "missing_extension_path", spec.globalName, hostBefore));
+					return;
+				}
+				csInterface.evalScript(script, function (result) {
+					if (isEvalScriptError(result)) {
+						done(presetModuleLoadFailed(spec.path, index, result, spec.globalName, hostBefore));
+						return;
+					}
+					csInterface.evalScript(hostPresentScript(), function (verifyResult) {
+						var verified = parseEvalResult(verifyResult);
+						if (isEvalScriptError(verifyResult) || !verified || verified.ok !== true) {
+							done(presetModuleLoadFailed(
+								spec.path,
+								index,
+								verifyResult,
+								spec.globalName,
+								hostBefore,
+								{ exactError: verified && verified.error ? verified.error : String(verifyResult) }
+							));
+							return;
+						}
+						loadNext(index + 1);
+					});
+				});
+				return;
+			}
+			script = evalPresetModuleScript(csInterface, spec.path);
+			if (!script) {
+				done(presetModuleLoadFailed(spec.path, index, "missing_extension_path", spec.globalName, hostBefore));
+				return;
+			}
+			csInterface.evalScript(script, function (result) {
+				var loaded;
+				if (isEvalScriptError(result)) {
+					done(presetModuleLoadFailed(spec.path, index, result, spec.globalName, hostBefore));
+					return;
+				}
+				loaded = parseEvalResult(result);
+				if (!loaded || loaded.ok !== true) {
+					done(presetModuleLoadFailed(
+						spec.path,
+						index,
+						result,
+						spec.globalName,
+						hostBefore,
+						{
+							exactError: (loaded && (loaded.error || loaded.detail)) || String(result),
+							failingStage: "evalFile"
+						}
+					));
+					return;
+				}
+				csInterface.evalScript(verifyPresetGlobalScript(spec.globalName), function (verifyResult) {
+					var verified = parseEvalResult(verifyResult);
+					if (isEvalScriptError(verifyResult) || !verified || verified.ok !== true) {
+						done(presetModuleLoadFailed(
+							spec.path,
+							index,
+							verifyResult,
+							spec.globalName,
+							hostBefore,
+							{
+								exactError: (verified && verified.error) || String(verifyResult),
+								failingStage: "verifyGlobal"
+							}
+						));
+						return;
+					}
+					loadNext(index + 1);
+				});
+			});
+		}
+		loadNext(0);
+	}
+
+	function ensurePresetHost(csInterface, done, options) {
+		options = options || {};
 		pingPresetHost(csInterface, function (status) {
 			var loads = [];
-			function pingAgain() {
-				pingPresetHost(csInterface, function (again) {
-					done(again || status);
-				});
-			}
-			function loadNext(index) {
-				var script;
-				if (index >= loads.length) {
-					pingAgain();
-					return;
-				}
-				script = evalFileScript(csInterface, loads[index]);
-				if (!script) {
-					loadNext(index + 1);
-					return;
-				}
-				csInterface.evalScript(script, function () {
-					loadNext(index + 1);
-				});
-			}
-			if (status && status.ok) {
+			var forceReload = options.forceReload === true || !status || status.ok !== true;
+			if (!forceReload) {
 				done(status);
 				return;
 			}
-			if (!status || !status.host) {
-				loads.push("/src/premiere/host.jsx");
+			if (!status || status.host !== true) {
+				loads.push({ path: "/src/premiere/host.jsx", globalName: "_pickfx" });
 			}
-			loads.push("/src/core/ParameterResolver.js");
-			loads.push("/src/core/ParameterWriter.js");
-			loads.push("/src/core/ParameterValueType.js");
-			loads.push("/src/core/PointValue.js");
-			loads.push("/src/core/ParameterReadBack.js");
-			loads.push("/src/core/NumericCandidateClassifier.js");
-			loads.push("/src/core/ParameterCapability.js");
-			loads.push("/src/core/ConfirmedParameterWrites.js");
-			loads.push("/src/core/PointParameterWriter.js");
-			loads.push("/src/core/NumberParameterWriter.js");
-			loads.push("/src/core/BooleanParameterWriter.js");
-			loads.push("/src/core/UniversalParameterResolver.js");
-			loads.push("/src/core/UniversalParameterWriter.js");
-			loads.push("/src/core/PresetCapability.js");
-			loads.push("/src/core/PresetSchema.js");
-			loads.push("/src/core/PresetHost.js");
-			loadNext(0);
+			loads = loads.concat(PRESET_HOST_MODULES);
+			loadPresetHostStack(csInterface, loads, status, done);
 		});
 	}
 
-	function missingPresetHostPayload(detail) {
+	function missingPresetHostPayload(host) {
+		if (host && host.reason === "PRESET_HOST_MODULE_LOAD_FAILED") {
+			host.preset = true;
+			host.capture = true;
+			return host;
+		}
 		return {
 			ok: false,
-			reason: "WRITE_FAILED",
-			detail: detail || "Preset host is not loaded.",
+			reason: (host && host.reason) || "PRESET_HOST_NOT_READY",
+			detail: (host && host.detail) || "Preset host is not loaded.",
+			failingStage: (host && host.failingStage) || "ensurePresetHost",
+			failingModule: (host && host.failingModule) || "",
+			exactError: (host && (host.exactError || host.exactEvalResult)) || "",
+			hostStatusBefore: host && host.hostStatusBefore ? host.hostStatusBefore : host,
 			preset: true,
-			command: true,
-			verified: false
+			capture: true
 		};
 	}
 
-	function withPresetHost(csInterface, script, done) {
+	function withPresetHost(csInterface, script, done, options) {
+		var capture = !!(options && options.capture);
 		ensurePresetHost(csInterface, function (host) {
 			if (!host || !host.ok) {
-				done(missingPresetHostPayload(host && host.detail));
+				done(missingPresetHostPayload(host));
 				return;
 			}
 			csInterface.evalScript(script, function (result) {
@@ -1327,23 +1518,91 @@ var PremiereBridge = (function () {
 				if (isEvalScriptError(result)) {
 					done({
 						ok: false,
-						reason: "WRITE_FAILED",
+						reason: capture ? "PRESET_HOST_NOT_READY" : "WRITE_FAILED",
 						detail: "evalScript failed after the Preset host was ready.",
 						error: String(result),
+						exactError: String(result),
+						failingStage: "listCapturableComponents",
 						preset: true,
+						capture: capture,
 						command: true,
 						hostReady: true
 					});
 					return;
 				}
 				payload = parseEvalResult(result);
+				if (payload && capture) {
+					payload.capture = true;
+				}
 				done(payload);
 			});
-		});
+		}, options);
 	}
 
 	function listCapturableComponents(csInterface, done) {
-		withPresetHost(csInterface, "$._pickfx.listCapturableComponents()", done);
+		withPresetHost(csInterface, "$._pickfx.listCapturableComponents()", done, { capture: true });
+	}
+
+	function debugPresetCaptureStartup(csInterface, done) {
+		var report = {
+			panelCommit: PRESET_RUNTIME_VERSION,
+			extensionPath: extensionRoot(csInterface),
+			expectedRuntimeVersion: PRESET_RUNTIME_VERSION,
+			failingStage: "",
+			failingModule: "",
+			exactError: ""
+		};
+		function finish(host, listed) {
+			report.hostLoaded = !!(host && host.host);
+			report.presetHostLoaded = !!(host && (host.presetHostLoaded || host.presetHost));
+			report.presetCapabilityLoaded = !!(host && host.presetCapabilityLoaded);
+			report.parameterResolverLoaded = !!(host && host.parameterResolverLoaded);
+			report.parameterWriterLoaded = !!(host && host.parameterWriterLoaded);
+			report.parameterValueTypeLoaded = !!(host && host.parameterValueTypeLoaded);
+			report.pointValueLoaded = !!(host && host.pointValueLoaded);
+			report.parameterReadBackLoaded = !!(host && host.parameterReadBackLoaded);
+			report.parameterCapabilityLoaded = !!(host && host.parameterCapabilityLoaded);
+			report.presetSchemaLoaded = !!(host && host.presetSchemaLoaded);
+			report.listCapturableExists = !!(host && (host.listCapturableExists || host.listCapturable));
+			report.runtimeVersion = host && host.runtimeVersion ? host.runtimeVersion : "";
+			report.hostStatusBefore = host && host.hostStatusBefore ? host.hostStatusBefore : null;
+			report.hostStatusAfter = host || null;
+			report.selectedVideoCount = listed && typeof listed.count === "number" ? listed.count :
+				(listed && listed.session ? 1 : 0);
+			if (host && host.ok !== true) {
+				report.failingStage = host.failingStage || "ensurePresetHost";
+				report.failingModule = host.failingModule || host.modulePath || "";
+				report.exactError = host.exactError || host.exactEvalResult || host.detail || "";
+				report.reason = host.reason || "PRESET_HOST_NOT_READY";
+				report.ok = false;
+				done(report);
+				return;
+			}
+			if (!listed || listed.ok !== true) {
+				report.failingStage = (listed && listed.failingStage) || "listCapturableComponents";
+				report.failingModule = (listed && listed.failingModule) || "";
+				report.exactError = (listed && (listed.exactError || listed.detail || listed.reason)) || "";
+				report.reason = (listed && listed.reason) || "PRESET_HOST_NOT_READY";
+				report.ok = false;
+				done(report);
+				return;
+			}
+			report.ok = true;
+			report.componentCount = listed.components ? listed.components.length : 0;
+			done(report);
+		}
+		pingPresetHost(csInterface, function (before) {
+			report.hostStatusBefore = before;
+			ensurePresetHost(csInterface, function (host) {
+				if (!host || host.ok !== true) {
+					finish(host, null);
+					return;
+				}
+				listCapturableComponents(csInterface, function (listed) {
+					finish(host, listed);
+				});
+			}, { forceReload: true });
+		});
 	}
 
 	function captureComponentScript(session, componentIndex, offset, limit) {
@@ -1668,6 +1927,10 @@ var PremiereBridge = (function () {
 		ensureActionHost: ensureActionHost,
 		runAction: runAction,
 		ensurePresetHost: ensurePresetHost,
+		debugPresetHostBootstrap: debugPresetCaptureStartup,
+		debugPresetCaptureStartup: debugPresetCaptureStartup,
+		PRESET_RUNTIME_VERSION: PRESET_RUNTIME_VERSION,
+		PRESET_HOST_MODULES: PRESET_HOST_MODULES,
 		listCapturableComponents: listCapturableComponents,
 		captureComponentScript: captureComponentScript,
 		captureComponent: captureComponent,

@@ -28,6 +28,8 @@ var CommandPaletteState = (function () {
 		"COMPONENTPARAM",
 		"SETVALUE",
 		"USEDQE",
+		"PRESET_HOST_MODULE_LOAD_FAILED",
+		"PRESET_HOST_NOT_READY",
 		"PRESET_STORAGE_UNAVAILABLE",
 		"PRESET_USER_SCOPE_UNAVAILABLE",
 		"PRESET_CAPABILITY_PARITY_BUG",
@@ -290,6 +292,15 @@ var CommandPaletteState = (function () {
 		}
 		reason = payload && payload.reason ? String(payload.reason) : "";
 		status = payload && payload.status ? String(payload.status) : "";
+		if (reason === "PRESET_HOST_MODULE_LOAD_FAILED" || reason === "PRESET_HOST_NOT_READY" ||
+				(payload && payload.capture === true && (reason === "SAFE_EXECUTOR_UNAVAILABLE" ||
+					reason === "WRITE_FAILED" || /EvalScript/i.test(status + " " + (payload.detail || "") + " " + (payload.error || ""))))) {
+			return {
+				title: "Preset engine couldn't start",
+				detail: "Reload PickFX and try again.",
+				footer: "Preset engine couldn't start"
+			};
+		}
 		if (reason === "NO_VIDEO_SELECTION") {
 			return {
 				title: "Select a video clip",

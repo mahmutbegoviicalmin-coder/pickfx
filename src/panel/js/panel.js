@@ -1909,12 +1909,8 @@
 			return;
 		}
 		if (typeof PresetCapture === "undefined" || !PresetCapture.listComponents) {
-			showApplyFeedback({
-				ok: false,
-				preset: true,
-				reason: "WRITE_FAILED",
-				status: "Couldn't capture that look."
-			});
+			presetsBody.innerHTML = "";
+			paintPresetNote("Preset engine couldn't start");
 			return;
 		}
 		setPresetsView("capture");
@@ -1929,12 +1925,12 @@
 		PresetCapture.listComponents(csInterface, function (listed) {
 			var i;
 			var selected = {};
+			var captureError;
 			if (!listed || !listed.ok) {
 				presetsBody.innerHTML = "";
-				paintPresetNote(visibleApplyMessage(listed || {
-					ok: false,
-					reason: "NO_VIDEO_SELECTION"
-				}).title);
+				captureError = listed || { ok: false, reason: "NO_VIDEO_SELECTION" };
+				captureError.capture = true;
+				paintPresetNote(visibleApplyMessage(captureError).title);
 				return;
 			}
 			captureState = {
@@ -7762,6 +7758,32 @@
 				}
 			});
 		} catch (ignoreFlyout) {}
+	}
+
+	function debugPresetCaptureStartup(done) {
+		if (typeof PremiereBridge === "undefined" || !PremiereBridge.debugPresetCaptureStartup) {
+			if (done) {
+				done({
+					ok: false,
+					panelCommit: typeof PremiereBridge !== "undefined" ? PremiereBridge.PRESET_RUNTIME_VERSION : "",
+					failingStage: "debugPresetCaptureStartup",
+					exactError: "PremiereBridge.debugPresetCaptureStartup is not available."
+				});
+			}
+			return;
+		}
+		PremiereBridge.debugPresetCaptureStartup(csInterface, function (report) {
+			if (typeof console !== "undefined" && console.log) {
+				console.log("[PickFX] debugPresetCaptureStartup", report);
+			}
+			if (done) {
+				done(report);
+			}
+		});
+	}
+
+	if (typeof window !== "undefined") {
+		window.debugPresetCaptureStartup = debugPresetCaptureStartup;
 	}
 
 	installFlyoutMenu();

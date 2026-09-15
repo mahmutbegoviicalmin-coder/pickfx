@@ -4613,6 +4613,9 @@ $._pickfx = {
 		var cap = typeof $._pickfxPresetCapability !== "undefined" && $._pickfxPresetCapability.hostStatus
 			? $._pickfxPresetCapability.hostStatus()
 			: null;
+		var runtime = (typeof $._pickfxPresetHost !== "undefined" && $._pickfxPresetHost.runtimeVersion) ||
+			(typeof $._pickfxPresetCapability !== "undefined" && $._pickfxPresetCapability.runtimeVersion) ||
+			"";
 		return JSON.stringify({
 			ok: typeof $._pickfxPresetHost !== "undefined" &&
 				typeof $._pickfxPresetHost.listCapturableComponents === "function" &&
@@ -4624,6 +4627,7 @@ $._pickfx = {
 			applyPreset: typeof $._pickfxPresetHost !== "undefined" &&
 				typeof $._pickfxPresetHost.applyPreset === "function",
 			presetHost: typeof $._pickfxPresetHost !== "undefined",
+			runtimeVersion: runtime,
 			capability: cap
 		});
 	},

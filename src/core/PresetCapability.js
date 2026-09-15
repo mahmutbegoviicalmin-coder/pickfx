@@ -1,4 +1,5 @@
 var PresetCapability = (function () {
+	var RUNTIME_VERSION = "24b6bf1-presets-parity-v1";
 	var PRODUCTION_TYPES = {
 		number: true,
 		angle: true,
@@ -330,10 +331,12 @@ var PresetCapability = (function () {
 		status.missing = missing;
 		status.productionTypes = ["number", "angle", "boolean", "point"];
 		status.stubTypes = ["color", "enum", "string"];
+		status.runtimeVersion = RUNTIME_VERSION;
 		return status;
 	}
 
 	return {
+		runtimeVersion: RUNTIME_VERSION,
 		productionTypes: productionTypes,
 		isProductionType: isProductionType,
 		pickfxWriterSupportsType: pickfxWriterSupportsType,
